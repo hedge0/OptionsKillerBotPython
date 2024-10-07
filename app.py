@@ -9,7 +9,7 @@ import nest_asyncio
 nest_asyncio.apply()
 
 from schwab.auth import easy_client
-from helpers import calculate_rmse, filter_strikes, load_config, precompile_numba_functions, get_risk_free_rate
+from helpers import calculate_rmse, filter_strikes, is_nyse_open, load_config, precompile_numba_functions, get_risk_free_rate
 from models import calculate_implied_volatility_baw
 from interpolations import fit_model, rbf_model, rfv_model
 
@@ -88,91 +88,102 @@ async def main():
     chain_primary_key = "callExpDateMap" if option_type == "calls" else "putExpDateMap"
 
     while True:
-        try:
-            respChain = await client.get_option_chain(ticker, from_date=option_date, to_date=option_date, contract_type=contract_type)
-            assert respChain.status_code == httpx.codes.OK
-            chain = respChain.json()
+        if (is_nyse_open() or config["DRY_RUN"]):
+            try:
+                respChain = await client.get_option_chain(ticker, from_date=option_date, to_date=option_date, contract_type=contract_type)
+                assert respChain.status_code == httpx.codes.OK
+                chain = respChain.json()
 
-            if chain["underlyingPrice"] is not None:
-                S = float(chain["underlyingPrice"])
+                if chain["underlyingPrice"] is not None:
+                    S = float(chain["underlyingPrice"])
 
-            chain_secondary_key = next(iter(chain[chain_primary_key].keys()))
-            for strike_price in chain[chain_primary_key][chain_secondary_key]:
-                option_json = chain[chain_primary_key][chain_secondary_key][strike_price][0]
-                bid_price = option_json["bid"]
-                ask_price = option_json["ask"]
-                open_interest = option_json["openInterest"]
+                chain_secondary_key = next(iter(chain[chain_primary_key].keys()))
+                for strike_price in chain[chain_primary_key][chain_secondary_key]:
+                    option_json = chain[chain_primary_key][chain_secondary_key][strike_price][0]
+                    bid_price = option_json["bid"]
+                    ask_price = option_json["ask"]
+                    open_interest = option_json["openInterest"]
 
-                if strike_price is not None and bid_price is not None and ask_price is not None and open_interest is not None:
-                    mid_price = round(float((bid_price + ask_price) / 2), 3)
-                    quote_data[float(strike_price)] = {
-                        "bid": float(bid_price),
-                        "ask": float(ask_price),
-                        "mid": float(mid_price),
-                        "open_interest": float(open_interest),
-                        "bid_IV": 0.0,
-                        "ask_IV": 0.0,
-                        "mid_IV": 0.0
-                    }
+                    if strike_price is not None and bid_price is not None and ask_price is not None and open_interest is not None:
+                        mid_price = round(float((bid_price + ask_price) / 2), 3)
+                        quote_data[float(strike_price)] = {
+                            "bid": float(bid_price),
+                            "ask": float(ask_price),
+                            "mid": float(mid_price),
+                            "open_interest": float(open_interest),
+                            "bid_IV": 0.0,
+                            "ask_IV": 0.0,
+                            "mid_IV": 0.0
+                        }
 
-        except Exception as e:
-            print(f"An unexpected error occurred in options stream: {e}")
+            except Exception as e:
+                print(f"An unexpected error occurred in options stream: {e}")
 
-        sorted_data = dict(sorted(quote_data.items()))
-        filtered_strikes = filter_strikes(np.array(list(sorted_data.keys())), S, num_stdev=1.25)
-        sorted_data = {strike: prices for strike, prices in sorted_data.items() if strike in filtered_strikes and prices['bid'] != 0.0}
+            sorted_data = dict(sorted(quote_data.items()))
+            filtered_strikes = filter_strikes(np.array(list(sorted_data.keys())), S, num_stdev=1.25)
+            sorted_data = {strike: prices for strike, prices in sorted_data.items() if strike in filtered_strikes and prices['bid'] != 0.0}
 
-        current_time = datetime.now()
-        T = (expiration_time - current_time).total_seconds() / (365 * 24 * 3600)
+            current_time = datetime.now()
+            T = (expiration_time - current_time).total_seconds() / (365 * 24 * 3600)
 
-        for strike, prices in sorted_data.items():
-            sorted_data[strike] = {
-                "bid": prices["bid"],
-                "ask": prices["ask"],
-                "mid": prices["mid"],
-                "open_interest": prices["open_interest"],
-                "mid_IV": calculate_implied_volatility_baw(prices["mid"], S, strike, r, T, q=q, option_type=option_type),
-                "ask_IV": calculate_implied_volatility_baw(prices["ask"], S, strike, r, T, q=q, option_type=option_type),
-                "bid_IV": calculate_implied_volatility_baw(prices["bid"], S, strike, r, T, q=q, option_type=option_type)
-            }
+            for strike, prices in sorted_data.items():
+                sorted_data[strike] = {
+                    "bid": prices["bid"],
+                    "ask": prices["ask"],
+                    "mid": prices["mid"],
+                    "open_interest": prices["open_interest"],
+                    "mid_IV": calculate_implied_volatility_baw(prices["mid"], S, strike, r, T, q=q, option_type=option_type),
+                    "ask_IV": calculate_implied_volatility_baw(prices["ask"], S, strike, r, T, q=q, option_type=option_type),
+                    "bid_IV": calculate_implied_volatility_baw(prices["bid"], S, strike, r, T, q=q, option_type=option_type)
+                }
 
-        sorted_data = {strike: prices for strike, prices in sorted_data.items() if prices['mid_IV'] > 0.005}
+            sorted_data = {strike: prices for strike, prices in sorted_data.items() if prices['mid_IV'] > 0.005}
 
-        x = np.array(list(sorted_data.keys())) 
-        y_bid = np.array([prices['bid_IV'] for prices in sorted_data.values()])
-        y_ask = np.array([prices['ask_IV'] for prices in sorted_data.values()])
-        y_mid = np.array([prices['mid_IV'] for prices in sorted_data.values()])
-        open_interest = np.array([prices['open_interest'] for prices in sorted_data.values()])
+            x = np.array(list(sorted_data.keys())) 
+            y_bid = np.array([prices['bid_IV'] for prices in sorted_data.values()])
+            y_ask = np.array([prices['ask_IV'] for prices in sorted_data.values()])
+            y_mid = np.array([prices['mid_IV'] for prices in sorted_data.values()])
+            open_interest = np.array([prices['open_interest'] for prices in sorted_data.values()])
 
-        scaler = MinMaxScaler()
-        x_normalized = scaler.fit_transform(x.reshape(-1, 1)).flatten()
-        x_normalized = x_normalized + 0.5
+            scaler = MinMaxScaler()
+            x_normalized = scaler.fit_transform(x.reshape(-1, 1)).flatten()
+            x_normalized = x_normalized + 0.5
 
-        rbf_interpolator = rbf_model(np.log(x_normalized), y_mid, epsilon=0.5)
-        rfv_params = fit_model(x_normalized, y_mid, y_bid, y_ask, rfv_model)
+            rbf_interpolator = rbf_model(np.log(x_normalized), y_mid, epsilon=0.5)
+            rfv_params = fit_model(x_normalized, y_mid, y_bid, y_ask, rfv_model)
 
-        fine_x_normalized = np.linspace(np.min(x_normalized), np.max(x_normalized), 800)
-        rbf_interpolated_y = rbf_interpolator(np.log(fine_x_normalized).reshape(-1, 1))
-        rfv_interpolated_y = rfv_model(np.log(fine_x_normalized), rfv_params)
-        
-        # Weighted Averaging: RFV 75%, RBF 25%
-        interpolated_y = 0.75 * rfv_interpolated_y + 0.25 * rbf_interpolated_y
+            fine_x_normalized = np.linspace(np.min(x_normalized), np.max(x_normalized), 800)
+            rbf_interpolated_y = rbf_interpolator(np.log(fine_x_normalized).reshape(-1, 1))
+            rfv_interpolated_y = rfv_model(np.log(fine_x_normalized), rfv_params)
+            
+            # Weighted Averaging: RFV 75%, RBF 25%
+            interpolated_y = 0.75 * rfv_interpolated_y + 0.25 * rbf_interpolated_y
 
-        fine_x = np.linspace(np.min(x), np.max(x), 800)
+            fine_x = np.linspace(np.min(x), np.max(x), 800)
 
-        y_pred = np.interp(x_normalized, fine_x_normalized, interpolated_y)
-        rmse = calculate_rmse(y_mid, y_pred)
+            y_pred = np.interp(x_normalized, fine_x_normalized, interpolated_y)
+            rmse = calculate_rmse(y_mid, y_pred)
 
-        if config["OPEN_INTEREST"] > 0.0:
-            mask = open_interest > config["OPEN_INTEREST"]
-            x = x[mask]
-            y_bid = y_bid[mask]
-            y_ask = y_ask[mask]
-            y_mid = y_mid[mask]
-            open_interest = open_interest[mask]
+            if config["MIN_OI"] > 0.0:
+                mask = open_interest > config["MIN_OI"]
+                x = x[mask]
+                y_bid = y_bid[mask]
+                y_ask = y_ask[mask]
+                y_mid = y_mid[mask]
+                open_interest = open_interest[mask]
 
-        print(rmse)
+            print(rmse)
 
+
+
+
+
+
+
+            
+        else:
+            print("NYSE is currently closed.")
+            break
 
         await asyncio.sleep(config["TIME_TO_REST"])
 
