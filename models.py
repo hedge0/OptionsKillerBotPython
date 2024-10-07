@@ -3,34 +3,6 @@ from math import log, sqrt, exp
 from numba import njit
 
 @njit
-def calculate_delta(S, K, T, r, sigma, q=0.0, option_type='calls'):
-    """
-    Calculate the delta of an option using the Black-Scholes formula with custom normal_cdf and dividend yield.
-
-    Parameters:
-    - S (float): Current stock price.
-    - K (float): Strike price.
-    - T (float): Time to maturity (in years).
-    - r (float): Risk-free interest rate (as a decimal).
-    - sigma (float): Volatility of the underlying asset.
-    - q (float, optional): Continuous dividend yield.
-    - option_type (str, optional): 'calls' or 'puts'.
-
-    Returns:
-    - float: The delta of the option.
-    """
-    d1 = (log(S / K) + (r - q + 0.5 * sigma ** 2) * T) / (sigma * sqrt(T))
-
-    if option_type == 'calls':
-        delta = normal_cdf(d1)
-    elif option_type == 'puts':
-        delta = normal_cdf(d1) - 1
-    else:
-        raise ValueError("option_type must be 'calls' or 'puts'.")
-
-    return delta
-
-@njit
 def erf(x):
     """
     Approximation of the error function (erf) using a high-precision method.
