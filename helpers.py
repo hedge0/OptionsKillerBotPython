@@ -1,5 +1,6 @@
 import os
 import numpy as np
+from datetime import datetime, time
 from dotenv import load_dotenv
 from fredapi import Fred
 from interpolations import rfv_model
@@ -25,7 +26,8 @@ def load_config():
         "DATE_INDEX": int(os.getenv('DATE_INDEX', 0)),
         "OPTION_TYPE": os.getenv('OPTION_TYPE'),
         "TIME_TO_REST": int(os.getenv('TIME_TO_REST', 1)),
-        "OPEN_INTEREST": float(os.getenv('OPEN_INTEREST', 0.0))
+        "MIN_OI": float(os.getenv('MIN_OI', 0.0)),
+        "MIN_UNDERPRICED": float(os.getenv('MIN_UNDERPRICED', 0.50))
     }
 
     for key, value in config.items():
@@ -33,6 +35,28 @@ def load_config():
             raise ValueError(f"{key} environment variable not set")
     
     return config
+
+def is_nyse_open():
+    """
+    Check if the New York Stock Exchange (NYSE) is currently open.
+    
+    The NYSE operates Monday through Friday from 9:30 AM to 3:45 PM EST.
+    This function checks if the current time falls within the trading hours 
+    and excludes weekends (Saturday and Sunday).
+    
+    Returns:
+        bool: True if NYSE is currently open, False otherwise.
+    """
+    now = datetime.now()
+    if now.weekday() >= 5:
+        return False
+
+    open_time = time(9, 30)
+    close_time = time(15, 45)
+
+    current_time = now.time()
+
+    return open_time <= current_time < close_time
 
 def precompile_numba_functions():
     """
