@@ -1,0 +1,5 @@
+python-dotenv
+httpx
+schwab-py
+fredapi
+numba
