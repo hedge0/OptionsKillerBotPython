@@ -1,3 +1,5 @@
+from datetime import datetime
+from collections import defaultdict
 import httpx
 import asyncio
 import nest_asyncio
@@ -10,18 +12,20 @@ from helpers import load_config, precompile_numba_functions, get_risk_free_rate
 config = {}
 client = None
 
+S = 0.0
 r = 0.0
 q = 0.0
 option_type = ""
 
 ticker = ""
-chain_primary_key = ""
+date = ""
+quote_data = defaultdict(lambda: {"bid": None, "ask": None, "mid": None, "open_interest": None})
 
 async def main():
     """
     Main function to initialize the bot.
     """
-    global client, r, q, option_type, chain_primary_key, ticker
+    global client, S, r, q, option_type, ticker, date, quote_data
     
     precompile_numba_functions()
     config = load_config()
@@ -53,7 +57,7 @@ async def main():
             for expiration in expirations["expirationList"]:
                 expiration_dates_list.append(expiration["expirationDate"])
                 
-            print(expiration_dates_list)
+            date = expiration_dates_list[config["DATE_INDEX"]]
         else:
             print("Validation Failed", f"Invalid ticker symbol: {ticker}. Please use a valid ticker.")
             return
@@ -71,14 +75,42 @@ async def main():
         print(f"An unexpected error occurred in options stream: {e}")
         return
 
-    #option_date = datetime.strptime(self.selected_date, "%Y-%m-%d").date()
+    option_date = datetime.strptime(date, "%Y-%m-%d").date()
     option_type = client.Options.ContractType.CALL if config["OPTION_TYPE"] == "calls" else client.Options.ContractType.PUT
     chain_primary_key = "callExpDateMap" if config["OPTION_TYPE"] == "calls" else "putExpDateMap"
 
-    print(q)
-    print(r)
+    while True:
+        try:
+            respChain = await client.get_option_chain(ticker, from_date=option_date, to_date=option_date, contract_type=option_type)
+            assert respChain.status_code == httpx.codes.OK
+            chain = respChain.json()
 
-    await asyncio.sleep(1)
+            if chain["underlyingPrice"] is not None:
+                S = float(chain["underlyingPrice"])
+
+            chain_secondary_key = next(iter(chain[chain_primary_key].keys()))
+            for strike_price in chain[chain_primary_key][chain_secondary_key]:
+                option_json = chain[chain_primary_key][chain_secondary_key][strike_price][0]
+                bid_price = option_json["bid"]
+                ask_price = option_json["ask"]
+                open_interest = option_json["openInterest"]
+
+                if strike_price is not None and bid_price is not None and ask_price is not None and open_interest is not None:
+                    mid_price = round(float((bid_price + ask_price) / 2), 3)
+                    quote_data[float(strike_price)] = {
+                        "bid": float(bid_price),
+                        "ask": float(ask_price),
+                        "mid": float(mid_price),
+                        "open_interest": float(open_interest)
+                    }
+
+        except Exception as e:
+            print(f"An unexpected error occurred in options stream: {e}")
+
+        print(quote_data)
+        print(S)
+
+        await asyncio.sleep(config["TIME_TO_REST"])
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -22,7 +22,9 @@ def load_config():
         "FRED_API_KEY": os.getenv('FRED_API_KEY'),
         "DRY_RUN": os.getenv('DRY_RUN', 'True').lower() in ['true', '1', 'yes'],
         "TICKER": os.getenv('TICKER'),
-        "OPTION_TYPE": os.getenv('OPTION_TYPE')
+        "DATE_INDEX": int(os.getenv('DATE_INDEX', 0)),
+        "OPTION_TYPE": os.getenv('OPTION_TYPE'),
+        "TIME_TO_REST": int(os.getenv('TIME_TO_REST', 1))
     }
 
     for key, value in config.items():
