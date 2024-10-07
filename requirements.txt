@@ -2,3 +2,6 @@ python-dotenv
 schwab-py
 fredapi
 numba
+httpx
+sklearn
+scipy
