@@ -4,21 +4,6 @@ from scipy.interpolate import RBFInterpolator
 from numba import njit
 
 @njit
-def slv_model(k, params):
-    """
-    SLV Model function.
-
-    Args:
-        k (float or array-like): Log-moneyness of the option.
-        params (list): Parameters [a, b, c, d, e] for the SLV model.
-
-    Returns:
-        float or array-like: The SLV model value for the given log-moneyness.
-    """
-    a, b, c, d, e = params
-    return a + b * k + c * k**2 + d * k**3 + e * k**4
-
-@njit
 def rfv_model(k, params):
     """
     RFV Model function.
@@ -32,21 +17,6 @@ def rfv_model(k, params):
     """
     a, b, c, d, e = params
     return (a + b*k + c*k**2) / (1 + d*k + e*k**2)
-
-@njit
-def sabr_model(k, params):
-    """
-    SABR Model function.
-
-    Args:
-        k (float or array-like): Log-moneyness of the option.
-        params (list): Parameters [alpha, beta, rho, nu, f0] for the SABR model.
-
-    Returns:
-        float or array-like: The SABR model value for the given log-moneyness.
-    """
-    alpha, beta, rho, nu, f0 = params
-    return alpha * (1 + beta * k + rho * k**2 + nu * k**3 + f0 * k**4)
 
 def rbf_model(k, y, epsilon=None):
     """
