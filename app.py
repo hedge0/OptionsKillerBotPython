@@ -138,16 +138,6 @@ async def main():
 
         sorted_data = {strike: prices for strike, prices in sorted_data.items() if prices['mid_IV'] > 0.005}
 
-
-
-
-        print(sorted_data)
-        print(S)
-        print(T)    
-
-
-
-
         x = np.array(list(sorted_data.keys())) 
         y_bid = np.array([prices['bid_IV'] for prices in sorted_data.values()])
         y_ask = np.array([prices['ask_IV'] for prices in sorted_data.values()])
@@ -173,7 +163,15 @@ async def main():
         y_pred = np.interp(x_normalized, fine_x_normalized, interpolated_y)
         rmse = calculate_rmse(y_mid, y_pred)
 
+        if config["OPEN_INTEREST"] > 0.0:
+            mask = open_interest > config["OPEN_INTEREST"]
+            x = x[mask]
+            y_bid = y_bid[mask]
+            y_ask = y_ask[mask]
+            y_mid = y_mid[mask]
+            open_interest = open_interest[mask]
 
+        print(rmse)
 
 
         await asyncio.sleep(config["TIME_TO_REST"])
