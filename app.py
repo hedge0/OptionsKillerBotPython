@@ -1,13 +1,17 @@
 from datetime import datetime, timedelta
 from collections import defaultdict
 import httpx
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
 import asyncio
 import nest_asyncio
+
 nest_asyncio.apply()
 
-import numpy as np
 from schwab.auth import easy_client
-from helpers import filter_strikes, load_config, precompile_numba_functions, get_risk_free_rate
+from helpers import calculate_rmse, filter_strikes, load_config, precompile_numba_functions, get_risk_free_rate
+from models import calculate_implied_volatility_baw
+from interpolations import fit_model, rbf_model, rfv_model
 
 # Constants and Global Variables
 config = {}
@@ -20,7 +24,7 @@ option_type = ""
 
 ticker = ""
 date = ""
-quote_data = defaultdict(lambda: {"bid": None, "ask": None, "mid": None, "open_interest": None})
+quote_data = defaultdict(lambda: {"bid": None, "ask": None, "mid": None, "open_interest": None, "bid_IV": None, "ask_IV": None, "mid_IV": None})
 
 async def main():
     """
@@ -34,6 +38,7 @@ async def main():
     if r is None:
         return
     ticker = config["TICKER"]
+    option_type = config["OPTION_TYPE"]
 
     try:
         client = easy_client(
@@ -79,12 +84,12 @@ async def main():
     option_date = datetime.strptime(date, "%Y-%m-%d").date()
     expiration_time =datetime.combine(datetime.strptime(date, '%Y-%m-%d'), datetime.min.time()) + timedelta(hours=16)
 
-    option_type = client.Options.ContractType.CALL if config["OPTION_TYPE"] == "calls" else client.Options.ContractType.PUT
-    chain_primary_key = "callExpDateMap" if config["OPTION_TYPE"] == "calls" else "putExpDateMap"
+    contract_type = client.Options.ContractType.CALL if option_type == "calls" else client.Options.ContractType.PUT
+    chain_primary_key = "callExpDateMap" if option_type == "calls" else "putExpDateMap"
 
     while True:
         try:
-            respChain = await client.get_option_chain(ticker, from_date=option_date, to_date=option_date, contract_type=option_type)
+            respChain = await client.get_option_chain(ticker, from_date=option_date, to_date=option_date, contract_type=contract_type)
             assert respChain.status_code == httpx.codes.OK
             chain = respChain.json()
 
@@ -104,7 +109,10 @@ async def main():
                         "bid": float(bid_price),
                         "ask": float(ask_price),
                         "mid": float(mid_price),
-                        "open_interest": float(open_interest)
+                        "open_interest": float(open_interest),
+                        "bid_IV": 0.0,
+                        "ask_IV": 0.0,
+                        "mid_IV": 0.0
                     }
 
         except Exception as e:
@@ -112,14 +120,61 @@ async def main():
 
         sorted_data = dict(sorted(quote_data.items()))
         filtered_strikes = filter_strikes(np.array(list(sorted_data.keys())), S, num_stdev=1.25)
-        sorted_data = {strike: prices for strike, prices in sorted_data.items() if strike in filtered_strikes}
+        sorted_data = {strike: prices for strike, prices in sorted_data.items() if strike in filtered_strikes and prices['bid'] != 0.0}
 
         current_time = datetime.now()
         T = (expiration_time - current_time).total_seconds() / (365 * 24 * 3600)
 
+        for strike, prices in sorted_data.items():
+            sorted_data[strike] = {
+                "bid": prices["bid"],
+                "ask": prices["ask"],
+                "mid": prices["mid"],
+                "open_interest": prices["open_interest"],
+                "mid_IV": calculate_implied_volatility_baw(prices["mid"], S, strike, r, T, q=q, option_type=option_type),
+                "ask_IV": calculate_implied_volatility_baw(prices["ask"], S, strike, r, T, q=q, option_type=option_type),
+                "bid_IV": calculate_implied_volatility_baw(prices["bid"], S, strike, r, T, q=q, option_type=option_type)
+            }
+
+        sorted_data = {strike: prices for strike, prices in sorted_data.items() if prices['mid_IV'] > 0.005}
+
+
+
+
         print(sorted_data)
         print(S)
-        print(T)
+        print(T)    
+
+
+
+
+        x = np.array(list(sorted_data.keys())) 
+        y_bid = np.array([prices['bid_IV'] for prices in sorted_data.values()])
+        y_ask = np.array([prices['ask_IV'] for prices in sorted_data.values()])
+        y_mid = np.array([prices['mid_IV'] for prices in sorted_data.values()])
+        open_interest = np.array([prices['open_interest'] for prices in sorted_data.values()])
+
+        scaler = MinMaxScaler()
+        x_normalized = scaler.fit_transform(x.reshape(-1, 1)).flatten()
+        x_normalized = x_normalized + 0.5
+
+        rbf_interpolator = rbf_model(np.log(x_normalized), y_mid, epsilon=0.5)
+        rfv_params = fit_model(x_normalized, y_mid, y_bid, y_ask, rfv_model)
+
+        fine_x_normalized = np.linspace(np.min(x_normalized), np.max(x_normalized), 800)
+        rbf_interpolated_y = rbf_interpolator(np.log(fine_x_normalized).reshape(-1, 1))
+        rfv_interpolated_y = rfv_model(np.log(fine_x_normalized), rfv_params)
+        
+        # Weighted Averaging: RFV 75%, RBF 25%
+        interpolated_y = 0.75 * rfv_interpolated_y + 0.25 * rbf_interpolated_y
+
+        fine_x = np.linspace(np.min(x), np.max(x), 800)
+
+        y_pred = np.interp(x_normalized, fine_x_normalized, interpolated_y)
+        rmse = calculate_rmse(y_mid, y_pred)
+
+
+
 
         await asyncio.sleep(config["TIME_TO_REST"])
 
