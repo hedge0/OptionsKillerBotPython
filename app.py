@@ -10,13 +10,15 @@ from helpers import load_config, precompile_numba_functions, get_risk_free_rate
 config = {}
 risk_free_rate = 0.0
 div_yield = 0.0
+contract_type = ""
+chain_primary_key = ""
 client = None
 
 async def main():
     """
     Main function to initialize the bot.
     """
-    global client, risk_free_rate, div_yield
+    global client, risk_free_rate, div_yield, contract_type, chain_primary_key
     
     precompile_numba_functions()
     config = load_config()
