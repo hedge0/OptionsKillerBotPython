@@ -20,7 +20,9 @@ def load_config():
         "SCHWAB_CALLBACK_URL": os.getenv('SCHWAB_CALLBACK_URL'),
         "SCHWAB_ACCOUNT_HASH": os.getenv('SCHWAB_ACCOUNT_HASH'),
         "FRED_API_KEY": os.getenv('FRED_API_KEY'),
-        "DRY_RUN": os.getenv('DRY_RUN', 'True').lower() in ['true', '1', 'yes']
+        "DRY_RUN": os.getenv('DRY_RUN', 'True').lower() in ['true', '1', 'yes'],
+        "TICKER": os.getenv('TICKER'),
+        "OPTION_TYPE": os.getenv('OPTION_TYPE')
     }
 
     for key, value in config.items():
