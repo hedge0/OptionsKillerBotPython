@@ -1,12 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict
 import httpx
 import asyncio
 import nest_asyncio
 nest_asyncio.apply()
 
+import numpy as np
 from schwab.auth import easy_client
-from helpers import load_config, precompile_numba_functions, get_risk_free_rate
+from helpers import filter_strikes, load_config, precompile_numba_functions, get_risk_free_rate
 
 # Constants and Global Variables
 config = {}
@@ -76,6 +77,8 @@ async def main():
         return
 
     option_date = datetime.strptime(date, "%Y-%m-%d").date()
+    expiration_time =datetime.combine(datetime.strptime(date, '%Y-%m-%d'), datetime.min.time()) + timedelta(hours=16)
+
     option_type = client.Options.ContractType.CALL if config["OPTION_TYPE"] == "calls" else client.Options.ContractType.PUT
     chain_primary_key = "callExpDateMap" if config["OPTION_TYPE"] == "calls" else "putExpDateMap"
 
@@ -107,10 +110,21 @@ async def main():
         except Exception as e:
             print(f"An unexpected error occurred in options stream: {e}")
 
-        print(quote_data)
+        sorted_data = dict(sorted(quote_data.items()))
+        filtered_strikes = filter_strikes(np.array(list(sorted_data.keys())), S, num_stdev=1.25)
+        sorted_data = {strike: prices for strike, prices in sorted_data.items() if strike in filtered_strikes}
+
+        current_time = datetime.now()
+        T = (expiration_time - current_time).total_seconds() / (365 * 24 * 3600)
+
+        print(sorted_data)
         print(S)
+        print(T)
 
         await asyncio.sleep(config["TIME_TO_REST"])
+
+        # ADDED FOR NOW
+        break
 
 if __name__ == "__main__":
     asyncio.run(main())
