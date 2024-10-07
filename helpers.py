@@ -24,7 +24,8 @@ def load_config():
         "TICKER": os.getenv('TICKER'),
         "DATE_INDEX": int(os.getenv('DATE_INDEX', 0)),
         "OPTION_TYPE": os.getenv('OPTION_TYPE'),
-        "TIME_TO_REST": int(os.getenv('TIME_TO_REST', 1))
+        "TIME_TO_REST": int(os.getenv('TIME_TO_REST', 1)),
+        "OPEN_INTEREST": float(os.getenv('OPEN_INTEREST', 0.0))
     }
 
     for key, value in config.items():
