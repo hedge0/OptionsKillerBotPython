@@ -4,7 +4,7 @@ from datetime import datetime, time
 from dotenv import load_dotenv
 from fredapi import Fred
 from src.interpolations import rfv_model
-from src.models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
+from src.models import barone_adesi_whaley_american_option_price, calculate_delta, calculate_implied_volatility_baw
 
 load_dotenv()
 
@@ -67,6 +67,7 @@ def precompile_numba_functions():
     """
     barone_adesi_whaley_american_option_price(100.0, 100.0, 0.05, 0.01, 1.0, 0.2, option_type='calls')
     calculate_implied_volatility_baw(0.1, 100.0, 100.0, 0.01, 0.5, option_type='calls')
+    calculate_delta(100.0, 100.0, 0.5, 0.01, 0.2, option_type='calls')
     k = np.array([0.1])
     rfv_model(k, [0.1, 0.2, 0.3, 0.4, 0.5])
 
