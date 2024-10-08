@@ -82,6 +82,46 @@ async def fetch_streamer_quotes_and_calculate_deltas(ticker, streamers_tickers, 
 
     return total_deltas, delta_imbalance
 
+async def adjust_delta_imbalance(ticker, delta_imbalance, config, is_closing_position=False):
+    """
+    Adjust the delta imbalance by placing appropriate market orders to hedge the exposure or close the position.
+
+    Args:
+        ticker (str): The ticker symbol of the security.
+        delta_imbalance (float): The calculated delta imbalance that needs to be hedged.
+        total_shares (int): The total number of shares held for the ticker.
+        is_closing_position (bool, optional): If True, the function will close the position rather than hedging. Defaults to False.
+
+    Returns:
+        None
+    """
+    if delta_imbalance > 0:
+        print(f"ADJUSTMENT NEEDED: Go short {delta_imbalance} shares.")
+        if config["DRY_RUN"] != True:
+            try:
+                if is_closing_position:
+                    order = equity_sell_market(ticker, int(delta_imbalance)).build()
+                else:
+                    order = equity_sell_short_market(ticker, int(delta_imbalance)).build()
+                print(f"Order placed for -{delta_imbalance} shares...")
+                resp = await client.place_order(config["SCHWAB_ACCOUNT_HASH"], order)
+                assert resp.status_code == httpx.codes.OK
+            except Exception as e:
+                print(f"{e}")
+    else:
+        print(f"ADJUSTMENT NEEDED: Go long {-1 * delta_imbalance} shares.")
+        if config["DRY_RUN"] != True:
+            try:
+                if is_closing_position:
+                    order = equity_buy_to_cover_market(ticker, int(-1 * delta_imbalance)).build()
+                else:
+                    order = equity_buy_market(ticker, int(-1 * delta_imbalance)).build()
+                print(f"Order placed for +{-1 * delta_imbalance} shares...")
+                resp = await client.place_order(config["SCHWAB_ACCOUNT_HASH"], order)
+                assert resp.status_code == httpx.codes.OK
+            except Exception as e:
+                print(f"{e}")
+
 async def main():
     """
     Main function to initialize the bot.
@@ -190,7 +230,6 @@ async def main():
             except Exception as e:
                 print("Error fetching account positions:", f"An error occurred: {str(e)}")
 
-
             if len(streamers_tickers) != 0:
                 total_deltas, delta_imbalance = await fetch_streamer_quotes_and_calculate_deltas(
                     ticker, streamers_tickers, expiration_time, options, total_shares
@@ -199,70 +238,17 @@ async def main():
                 print(f"TOTAL SHARES: {total_shares}")
                 print(f"TOTAL DELTAS: {total_deltas}")
                 print(f"DELTA IMBALANCE: {delta_imbalance}")
-
                 if delta_imbalance != 0:
-                    if delta_imbalance > 0:
-                        print(f"ADJUSTMENT NEEDED: Go short {delta_imbalance} shares to hedge the delta exposure.")
-
-                        try:
-                            if config["DRY_RUN"] != True:
-                                order = equity_sell_short_market(ticker, int(delta_imbalance)).build()
-                                print(f"Order placed for -{delta_imbalance} shares...")
-                                resp = await client.place_order(config["SCHWAB_ACCOUNT_HASH"], order)
-                                assert resp.status_code == httpx.codes.OK
-                        except Exception as e:
-                            print(f"{e}")
-
-                    else:
-                        print(f"ADJUSTMENT NEEDED: Go long {-1 * delta_imbalance} shares to hedge the delta exposure.")
-
-                        try:
-                            if config["DRY_RUN"] != True:
-                                order = equity_buy_market(ticker, int(-1 * delta_imbalance)).build()
-                                print(f"Order placed for +{-1 * delta_imbalance} shares...")
-                                resp = await client.place_order(config["SCHWAB_ACCOUNT_HASH"], order)
-                                assert resp.status_code == httpx.codes.OK
-                        except Exception as e:
-                            print(f"{e}")
-                else:
-                    print(f"No adjustment needed. Delta is perfectly hedged with shares.")  
-                print()
+                    await adjust_delta_imbalance(ticker, delta_imbalance, config)
             elif total_shares != 0:
                 total_deltas = 0
                 delta_imbalance = total_shares + total_deltas
-
                 print(f"UNDERLYING SYMBOL: {ticker}")
                 print(f"TOTAL SHARES: {total_shares}")
                 print(f"TOTAL DELTAS: {total_deltas}")
                 print(f"DELTA IMBALANCE: {delta_imbalance}")
-
                 if delta_imbalance != 0:
-                    if delta_imbalance > 0:
-                        print(f"ADJUSTMENT NEEDED: Go short {delta_imbalance} shares to close position.")
-
-                        try:
-                            if config["DRY_RUN"] != True:
-                                order = equity_sell_market(ticker, int(delta_imbalance)).build()
-                                print(f"Order placed for -{delta_imbalance} shares...")
-                                resp = await client.place_order(config["SCHWAB_ACCOUNT_HASH"], order)
-                                assert resp.status_code == httpx.codes.OK
-                        except Exception as e:
-                            print(f"{e}")
-
-                    else:
-                        print(f"ADJUSTMENT NEEDED: Go long {-1 * delta_imbalance} shares to close position.")
-
-                        try:
-                            if config["DRY_RUN"] != True:
-                                order = equity_buy_to_cover_market(ticker, int(-1 * delta_imbalance)).build()
-                                print(f"Order placed for +{-1 * delta_imbalance} shares...")
-                                resp = await client.place_order(config["SCHWAB_ACCOUNT_HASH"], order)
-                                assert resp.status_code == httpx.codes.OK
-                        except Exception as e:
-                            print(f"{e}")
-                else:
-                    print(f"No adjustment needed. Delta is perfectly hedged with shares.")  
-                print()
+                    await adjust_delta_imbalance(ticker, delta_imbalance, config, is_closing_position=True)
 
 
 
