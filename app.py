@@ -5,12 +5,11 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import asyncio
 import nest_asyncio
-import csv
 
 nest_asyncio.apply()
 
 from schwab.auth import easy_client
-from src.helpers import calculate_rmse, filter_strikes, is_nyse_open, load_config, precompile_numba_functions, get_risk_free_rate
+from src.helpers import calculate_rmse, filter_strikes, is_nyse_open, load_config, precompile_numba_functions, get_risk_free_rate, write_csv
 from src.models import barone_adesi_whaley_american_option_price, calculate_delta, calculate_implied_volatility_baw
 from src.interpolations import fit_model, rbf_model, rfv_model
 
@@ -27,22 +26,60 @@ ticker = ""
 date = ""
 quote_data = defaultdict(lambda: {"bid": None, "ask": None, "mid": None, "open_interest": None, "bid_IV": None, "ask_IV": None, "mid_IV": None})
 
-def write_csv(filename, x_vals, y_vals):
+async def fetch_streamer_quotes_and_calculate_deltas(ticker, streamers_tickers, expiration_time, options, total_shares):
     """
-    Write x and y values to a CSV file.
-    
-    Args:
-        filename (str): The name of the CSV file.
-        x_vals (np.array): Array of x values (strikes).
-        y_vals (np.array): Array of y values (implied volatilities).
-    """
-    with open(filename, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(["Strike", "IV"])
-        for x, y in zip(x_vals, y_vals):
-            writer.writerow([x, y])
+    Fetch streamer quotes and calculate deltas for options on the specified ticker.
 
-    print(f"Data written to {filename}")
+    Args:
+        ticker (str): The ticker symbol of the underlying security.
+        streamers_tickers (list): A list of option ticker symbols.
+        expiration_time (datetime): The expiration time of the options.
+        options (dict): Dictionary of options positions.
+        total_shares (int): The total number of shares held for the ticker.
+
+    Returns:
+        tuple: A tuple containing total_deltas (float) and delta_imbalance (float).
+    """
+    total_deltas = 0.0
+    enable_hedge = False
+
+    try:
+        resp = await client.get_quote(ticker)
+        assert resp.status_code == httpx.codes.OK
+        stock_quote_data = resp.json()
+
+        S = round((stock_quote_data[ticker]['quote']['bidPrice'] + stock_quote_data[ticker]['quote']['askPrice']) / 2, 3)
+
+        resp = await client.get_quotes(streamers_tickers)
+        assert resp.status_code == httpx.codes.OK
+        options_quote_data = resp.json()
+
+        current_time = datetime.now()
+
+        for quote in options_quote_data:
+            price = (options_quote_data[quote]["quote"]["bidPrice"] + options_quote_data[quote]["quote"]["askPrice"]) / 2
+            T = (expiration_time - current_time).total_seconds() / (365 * 24 * 3600)
+            K = float(options_quote_data[quote]['reference']['strikePrice'])
+            option_type = 'calls' if options_quote_data[quote]['reference']['contractType'] == 'C' else 'puts'
+
+            sigma = calculate_implied_volatility_baw(price, S, K, r, T, q=q, option_type=option_type)
+            delta = calculate_delta(S, K, T, r, sigma, q=q, option_type=option_type)
+
+            if sigma > 0.005:
+                enable_hedge = True
+
+            quantity = float(options[quote]["longQuantity"]) - float(options[quote]["shortQuantity"])
+            total_deltas += (delta * quantity * 100.0)
+    except Exception as e:
+        print(f"Error fetching quotes: {str(e)}")
+
+    total_deltas = round(total_deltas)
+    if enable_hedge:
+        delta_imbalance = total_shares + total_deltas
+    else:
+        delta_imbalance = 0
+
+    return total_deltas, delta_imbalance
 
 async def main():
     """
@@ -127,8 +164,6 @@ async def main():
             streamers_tickers = []
             options = {}
             total_shares = 0
-            total_deltas = 0.0
-            enable_hedge = False
 
             try:
                 resp = await client.get_account(config["SCHWAB_ACCOUNT_HASH"], fields=[client.Account.Fields.POSITIONS])
@@ -154,47 +189,15 @@ async def main():
             except Exception as e:
                 print("Error fetching account positions:", f"An error occurred: {str(e)}")
 
+
             if len(streamers_tickers) != 0:
-                try:
-                    resp = await client.get_quote(ticker)
-                    assert resp.status_code == httpx.codes.OK
-                    stock_quote_data = resp.json()
-
-                    S = round((stock_quote_data[ticker]['quote']['bidPrice'] + stock_quote_data[ticker]['quote']['askPrice']) / 2, 3)
-
-                    resp = await client.get_quotes(streamers_tickers)
-                    assert resp.status_code == httpx.codes.OK
-                    options_quote_data = resp.json()
-
-                    current_time = datetime.now()
-
-                    for quote in options_quote_data:
-                        price = (options_quote_data[quote]["quote"]["bidPrice"] + options_quote_data[quote]["quote"]["askPrice"]) / 2
-
-                        T = (expiration_time - current_time).total_seconds() / (365 * 24 * 3600)
-                        K = float(options_quote_data[quote]['reference']['strikePrice'])
-                        option_type = 'calls' if options_quote_data[quote]['reference']['contractType'] == 'C' else 'puts'
-
-                        sigma = calculate_implied_volatility_baw(price, S, K, r, T, q=q, option_type=option_type)
-                        delta = calculate_delta(S, K, T, r, sigma, q=q, option_type=option_type)
-                        if (sigma > 0.005):
-                            enable_hedge = True
-
-                        quantity = float(options[quote]["longQuantity"]) - float(options[quote]["shortQuantity"])
-                        total_deltas += (delta * quantity * 100.0)
-                except Exception as e:
-                    print("Error fetching quotes:", f"An error occurred: {str(e)}")
-
-            total_deltas = round(total_deltas)
-            if enable_hedge == True:
-                delta_imbalance = total_shares + total_deltas
-            else:
-                delta_imbalance = 0
-
-            print(f"UNDERLYING SYMBOL: {ticker}")
-            print(f"TOTAL SHARES: {total_shares}")
-            print(f"TOTAL DELTAS: {total_deltas}")
-            print(f"DELTA IMBALANCE: {delta_imbalance}")
+                total_deltas, delta_imbalance = await fetch_streamer_quotes_and_calculate_deltas(
+                    ticker, streamers_tickers, expiration_time, options, total_shares
+                )
+                print(f"UNDERLYING SYMBOL: {ticker}")
+                print(f"TOTAL SHARES: {total_shares}")
+                print(f"TOTAL DELTAS: {total_deltas}")
+                print(f"DELTA IMBALANCE: {delta_imbalance}")
 
 
 
