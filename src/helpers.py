@@ -3,8 +3,8 @@ import numpy as np
 from datetime import datetime, time
 from dotenv import load_dotenv
 from fredapi import Fred
-from interpolations import rfv_model
-from models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
+from src.interpolations import rfv_model
+from src.models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
 
 load_dotenv()
 
