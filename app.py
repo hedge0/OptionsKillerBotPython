@@ -11,7 +11,7 @@ nest_asyncio.apply()
 
 from schwab.auth import easy_client
 from src.helpers import calculate_rmse, filter_strikes, is_nyse_open, load_config, precompile_numba_functions, get_risk_free_rate
-from src.models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
+from src.models import barone_adesi_whaley_american_option_price, calculate_delta, calculate_implied_volatility_baw
 from src.interpolations import fit_model, rbf_model, rfv_model
 
 # Constants and Global Variables
@@ -66,6 +66,12 @@ async def main():
             callback_url=config["SCHWAB_CALLBACK_URL"],
             asyncio=True)
         print("Login successful.\n")
+
+        resp = await client.get_account_numbers()
+        assert resp.status_code == httpx.codes.OK
+
+        account_ID_data = resp.json()
+        print(account_ID_data, "\n")
     except Exception as e:
         print("Login Failed", f"An error occurred: {str(e)}")
         return
@@ -105,8 +111,116 @@ async def main():
     contract_type = client.Options.ContractType.CALL if option_type == "calls" else client.Options.ContractType.PUT
     chain_primary_key = "callExpDateMap" if option_type == "calls" else "putExpDateMap"
 
+
+
+
+
+
+
+
+
+
+
+
     while True:
         if (is_nyse_open() or config["DRY_RUN"]):
+            streamers_tickers = []
+            options = {}
+            total_shares = 0
+            total_deltas = 0.0
+            enable_hedge = False
+
+            try:
+                resp = await client.get_account(config["SCHWAB_ACCOUNT_HASH"], fields=[client.Account.Fields.POSITIONS])
+                assert resp.status_code == httpx.codes.OK
+
+                account_data = resp.json()
+
+                if "positions" in account_data["securitiesAccount"]:
+                    positions = account_data["securitiesAccount"]["positions"]
+                    for position in positions:
+                        asset_type = position["instrument"]["assetType"]
+
+                        if asset_type == "EQUITY":
+                            symbol = position["instrument"]["symbol"]
+                            if symbol == ticker:
+                                total_shares = round(float(position["longQuantity"]) - float(position["shortQuantity"]))
+
+                        elif asset_type == "OPTION":
+                            underlying_symbol = position["instrument"]["underlyingSymbol"]
+                            if underlying_symbol == ticker:
+                                options[position["instrument"]["symbol"]] = position
+                                streamers_tickers.append(position["instrument"]["symbol"])
+            except Exception as e:
+                print("Error fetching account positions:", f"An error occurred: {str(e)}")
+
+            if len(streamers_tickers) != 0:
+                try:
+                    resp = await client.get_quote(ticker)
+                    assert resp.status_code == httpx.codes.OK
+                    stock_quote_data = resp.json()
+
+                    S = round((stock_quote_data[ticker]['quote']['bidPrice'] + stock_quote_data[ticker]['quote']['askPrice']) / 2, 3)
+
+                    resp = await client.get_quotes(streamers_tickers)
+                    assert resp.status_code == httpx.codes.OK
+                    options_quote_data = resp.json()
+
+                    current_time = datetime.now()
+
+                    for quote in options_quote_data:
+                        price = (options_quote_data[quote]["quote"]["bidPrice"] + options_quote_data[quote]["quote"]["askPrice"]) / 2
+
+                        T = (expiration_time - current_time).total_seconds() / (365 * 24 * 3600)
+                        K = float(options_quote_data[quote]['reference']['strikePrice'])
+                        option_type = 'calls' if options_quote_data[quote]['reference']['contractType'] == 'C' else 'puts'
+
+                        sigma = calculate_implied_volatility_baw(price, S, K, r, T, q=q, option_type=option_type)
+                        delta = calculate_delta(S, K, T, r, sigma, q=q, option_type=option_type)
+                        if (sigma > 0.005):
+                            enable_hedge = True
+
+                        quantity = float(options[quote]["longQuantity"]) - float(options[quote]["shortQuantity"])
+                        total_deltas += (delta * quantity * 100.0)
+                except Exception as e:
+                    print("Error fetching quotes:", f"An error occurred: {str(e)}")
+
+            total_deltas = round(total_deltas)
+            if enable_hedge == True:
+                delta_imbalance = total_shares + total_deltas
+            else:
+                delta_imbalance = 0
+
+            print(f"UNDERLYING SYMBOL: {ticker}")
+            print(f"TOTAL SHARES: {total_shares}")
+            print(f"TOTAL DELTAS: {total_deltas}")
+            print(f"DELTA IMBALANCE: {delta_imbalance}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
             try:
                 respChain = await client.get_option_chain(ticker, from_date=option_date, to_date=option_date, contract_type=contract_type)
                 assert respChain.status_code == httpx.codes.OK
@@ -133,7 +247,6 @@ async def main():
                             "ask_IV": 0.0,
                             "mid_IV": 0.0
                         }
-
             except Exception as e:
                 print(f"An unexpected error occurred in options stream: {e}")
 
