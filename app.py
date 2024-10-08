@@ -5,12 +5,13 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import asyncio
 import nest_asyncio
+import csv
 
 nest_asyncio.apply()
 
 from schwab.auth import easy_client
 from helpers import calculate_rmse, filter_strikes, is_nyse_open, load_config, precompile_numba_functions, get_risk_free_rate
-from models import calculate_implied_volatility_baw
+from models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
 from interpolations import fit_model, rbf_model, rfv_model
 
 # Constants and Global Variables
@@ -25,6 +26,23 @@ option_type = ""
 ticker = ""
 date = ""
 quote_data = defaultdict(lambda: {"bid": None, "ask": None, "mid": None, "open_interest": None, "bid_IV": None, "ask_IV": None, "mid_IV": None})
+
+def write_csv(filename, x_vals, y_vals):
+    """
+    Write x and y values to a CSV file.
+    
+    Args:
+        filename (str): The name of the CSV file.
+        x_vals (np.array): Array of x values (strikes).
+        y_vals (np.array): Array of y values (implied volatilities).
+    """
+    with open(filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Strike", "IV"])
+        for x, y in zip(x_vals, y_vals):
+            writer.writerow([x, y])
+
+    print(f"Data written to {filename}")
 
 async def main():
     """
@@ -140,47 +158,64 @@ async def main():
             sorted_data = {strike: prices for strike, prices in sorted_data.items() if prices['mid_IV'] > 0.005}
 
             x = np.array(list(sorted_data.keys())) 
-            y_bid = np.array([prices['bid_IV'] for prices in sorted_data.values()])
-            y_ask = np.array([prices['ask_IV'] for prices in sorted_data.values()])
-            y_mid = np.array([prices['mid_IV'] for prices in sorted_data.values()])
+            y_bid_iv = np.array([prices['bid_IV'] for prices in sorted_data.values()])
+            y_ask_iv = np.array([prices['ask_IV'] for prices in sorted_data.values()])
+            y_mid_iv = np.array([prices['mid_IV'] for prices in sorted_data.values()])
             open_interest = np.array([prices['open_interest'] for prices in sorted_data.values()])
+            y_mid = np.array([prices['mid'] for prices in sorted_data.values()])
 
-            scaler = MinMaxScaler()
-            x_normalized = scaler.fit_transform(x.reshape(-1, 1)).flatten()
-            x_normalized = x_normalized + 0.5
+            if len(x) >= 20:
+                scaler = MinMaxScaler()
+                x_normalized = scaler.fit_transform(x.reshape(-1, 1)).flatten()
+                x_normalized = x_normalized + 0.5
 
-            rbf_interpolator = rbf_model(np.log(x_normalized), y_mid, epsilon=0.5)
-            rfv_params = fit_model(x_normalized, y_mid, y_bid, y_ask, rfv_model)
+                rbf_interpolator = rbf_model(np.log(x_normalized), y_mid_iv, epsilon=0.5)
+                rfv_params = fit_model(x_normalized, y_mid_iv, y_bid_iv, y_ask_iv, rfv_model)
 
-            fine_x_normalized = np.linspace(np.min(x_normalized), np.max(x_normalized), 800)
-            rbf_interpolated_y = rbf_interpolator(np.log(fine_x_normalized).reshape(-1, 1))
-            rfv_interpolated_y = rfv_model(np.log(fine_x_normalized), rfv_params)
-            
-            # Weighted Averaging: RFV 75%, RBF 25%
-            interpolated_y = 0.75 * rfv_interpolated_y + 0.25 * rbf_interpolated_y
+                fine_x_normalized = np.linspace(np.min(x_normalized), np.max(x_normalized), 800)
+                rbf_interpolated_y = rbf_interpolator(np.log(fine_x_normalized).reshape(-1, 1))
+                rfv_interpolated_y = rfv_model(np.log(fine_x_normalized), rfv_params)
+                
+                # Weighted Averaging: RFV 75%, RBF 25%
+                interpolated_y = 0.75 * rfv_interpolated_y + 0.25 * rbf_interpolated_y
 
-            fine_x = np.linspace(np.min(x), np.max(x), 800)
+                y_pred = np.interp(x_normalized, fine_x_normalized, interpolated_y)
+                rmse = calculate_rmse(y_mid_iv, y_pred)
+                print(rmse)
 
-            y_pred = np.interp(x_normalized, fine_x_normalized, interpolated_y)
-            rmse = calculate_rmse(y_mid, y_pred)
+                fine_x = np.linspace(np.min(x), np.max(x), 800)
 
-            if config["MIN_OI"] > 0.0:
-                mask = open_interest > config["MIN_OI"]
-                x = x[mask]
-                y_bid = y_bid[mask]
-                y_ask = y_ask[mask]
-                y_mid = y_mid[mask]
-                open_interest = open_interest[mask]
+                if config["MIN_OI"] > 0.0:
+                    mask = open_interest > config["MIN_OI"]
+                    x = x[mask]
+                    y_bid_iv = y_bid_iv[mask]
+                    y_ask_iv = y_ask_iv[mask]
+                    y_mid_iv = y_mid_iv[mask]
+                    open_interest = open_interest[mask]
+                    y_mid = y_mid[mask]
 
-            print(rmse)
+                if len(x) >= 2:
+                    mispricings = np.zeros(len(x))
 
+                    for i in range(len(x)):
+                        strike = x[i]
+                        diff = np.abs(fine_x - strike)
+                        closest_index = np.argmin(diff)
 
+                        interpolated_iv = interpolated_y[closest_index]
+                        mid_value = y_mid[i]
+                        option_price = barone_adesi_whaley_american_option_price(S, strike, T, r, interpolated_iv, q, option_type)
+                        diff_price = mid_value - option_price
 
+                        mispricings[i] = diff_price
 
-
-
-
-            
+                    for i in range(len(x)):
+                        print(f"Strike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}")
+                    
+                    # Write to CSV files
+                    write_csv("original_strikes_mid_iv.csv", x, y_mid_iv)
+                    write_csv("interpolated_strikes_iv.csv", fine_x, interpolated_y)
+                    print("Data written to CSV files successfully.")
         else:
             print("NYSE is currently closed.")
             break
