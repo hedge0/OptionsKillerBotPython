@@ -1,4 +1,5 @@
 import os
+import csv
 import numpy as np
 from datetime import datetime, time
 from dotenv import load_dotenv
@@ -126,3 +127,20 @@ def calculate_rmse(y_true, y_pred):
     """
     rmse = np.sqrt(np.mean((y_true - y_pred) ** 2))
     return rmse
+
+def write_csv(filename, x_vals, y_vals):
+    """
+    Write x and y values to a CSV file.
+    
+    Args:
+        filename (str): The name of the CSV file.
+        x_vals (np.array): Array of x values (strikes).
+        y_vals (np.array): Array of y values (implied volatilities).
+    """
+    with open(filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Strike", "IV"])
+        for x, y in zip(x_vals, y_vals):
+            writer.writerow([x, y])
+
+    print(f"Data written to {filename}")
