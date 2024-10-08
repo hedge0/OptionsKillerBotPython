@@ -9,6 +9,7 @@ import nest_asyncio
 nest_asyncio.apply()
 
 from schwab.auth import easy_client
+from schwab.orders.equities import equity_buy_market, equity_sell_short_market, equity_sell_market, equity_buy_to_cover_market
 from src.helpers import calculate_rmse, filter_strikes, is_nyse_open, load_config, precompile_numba_functions, get_risk_free_rate, write_csv
 from src.models import barone_adesi_whaley_american_option_price, calculate_delta, calculate_implied_volatility_baw
 from src.interpolations import fit_model, rbf_model, rfv_model
@@ -198,6 +199,70 @@ async def main():
                 print(f"TOTAL SHARES: {total_shares}")
                 print(f"TOTAL DELTAS: {total_deltas}")
                 print(f"DELTA IMBALANCE: {delta_imbalance}")
+
+                if delta_imbalance != 0:
+                    if delta_imbalance > 0:
+                        print(f"ADJUSTMENT NEEDED: Go short {delta_imbalance} shares to hedge the delta exposure.")
+
+                        try:
+                            if config["DRY_RUN"] != True:
+                                order = equity_sell_short_market(ticker, int(delta_imbalance)).build()
+                                print(f"Order placed for -{delta_imbalance} shares...")
+                                resp = await client.place_order(config["SCHWAB_ACCOUNT_HASH"], order)
+                                assert resp.status_code == httpx.codes.OK
+                        except Exception as e:
+                            print(f"{e}")
+
+                    else:
+                        print(f"ADJUSTMENT NEEDED: Go long {-1 * delta_imbalance} shares to hedge the delta exposure.")
+
+                        try:
+                            if config["DRY_RUN"] != True:
+                                order = equity_buy_market(ticker, int(-1 * delta_imbalance)).build()
+                                print(f"Order placed for +{-1 * delta_imbalance} shares...")
+                                resp = await client.place_order(config["SCHWAB_ACCOUNT_HASH"], order)
+                                assert resp.status_code == httpx.codes.OK
+                        except Exception as e:
+                            print(f"{e}")
+                else:
+                    print(f"No adjustment needed. Delta is perfectly hedged with shares.")  
+                print()
+            elif total_shares != 0:
+                total_deltas = 0
+                delta_imbalance = total_shares + total_deltas
+
+                print(f"UNDERLYING SYMBOL: {ticker}")
+                print(f"TOTAL SHARES: {total_shares}")
+                print(f"TOTAL DELTAS: {total_deltas}")
+                print(f"DELTA IMBALANCE: {delta_imbalance}")
+
+                if delta_imbalance != 0:
+                    if delta_imbalance > 0:
+                        print(f"ADJUSTMENT NEEDED: Go short {delta_imbalance} shares to close position.")
+
+                        try:
+                            if config["DRY_RUN"] != True:
+                                order = equity_sell_market(ticker, int(delta_imbalance)).build()
+                                print(f"Order placed for -{delta_imbalance} shares...")
+                                resp = await client.place_order(config["SCHWAB_ACCOUNT_HASH"], order)
+                                assert resp.status_code == httpx.codes.OK
+                        except Exception as e:
+                            print(f"{e}")
+
+                    else:
+                        print(f"ADJUSTMENT NEEDED: Go long {-1 * delta_imbalance} shares to close position.")
+
+                        try:
+                            if config["DRY_RUN"] != True:
+                                order = equity_buy_to_cover_market(ticker, int(-1 * delta_imbalance)).build()
+                                print(f"Order placed for +{-1 * delta_imbalance} shares...")
+                                resp = await client.place_order(config["SCHWAB_ACCOUNT_HASH"], order)
+                                assert resp.status_code == httpx.codes.OK
+                        except Exception as e:
+                            print(f"{e}")
+                else:
+                    print(f"No adjustment needed. Delta is perfectly hedged with shares.")  
+                print()
 
 
 
