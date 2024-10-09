@@ -186,19 +186,11 @@ async def handle_delta_adjustments(ticker, streamers_tickers, expiration_time, o
         total_deltas, delta_imbalance = await fetch_streamer_quotes_and_calculate_deltas(
             ticker, streamers_tickers, expiration_time, options, total_shares
         )
-        print(f"UNDERLYING SYMBOL: {ticker}")
-        print(f"TOTAL SHARES: {total_shares}")
-        print(f"TOTAL DELTAS: {total_deltas}")
-        print(f"DELTA IMBALANCE: {delta_imbalance}")
         if delta_imbalance != 0:
             await adjust_delta_imbalance(ticker, delta_imbalance, config)
     elif total_shares != 0:
         total_deltas = 0
         delta_imbalance = total_shares + total_deltas
-        print(f"UNDERLYING SYMBOL: {ticker}")
-        print(f"TOTAL SHARES: {total_shares}")
-        print(f"TOTAL DELTAS: {total_deltas}")
-        print(f"DELTA IMBALANCE: {delta_imbalance}")
         if delta_imbalance != 0:
             await adjust_delta_imbalance(ticker, delta_imbalance, config, is_closing_position=True)
 
