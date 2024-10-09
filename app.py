@@ -27,6 +27,51 @@ ticker = ""
 date = ""
 quote_data = defaultdict(lambda: {"bid": None, "ask": None, "mid": None, "open_interest": None, "bid_IV": None, "ask_IV": None, "mid_IV": None})
 
+async def cancel_existing_orders(ticker, account_hash, from_date, to_date):
+    """
+    Cancel existing orders for the specified ticker.
+
+    Args:
+        ticker (str): The ticker symbol of the underlying security.
+        account_hash (str): The account identifier for order management.
+        from_date (datetime): The start date for filtering orders.
+        to_date (datetime): The end date for filtering orders.
+
+    Returns:
+        None
+    """
+    order_data = []
+
+    try:
+        resp = await client.get_orders_for_account(
+            account_hash, 
+            from_entered_datetime=from_date, 
+            to_entered_datetime=to_date, 
+            status=client.Order.Status.WORKING
+        )
+        assert resp.status_code == httpx.codes.OK
+        order_data = resp.json()
+    except Exception as e:
+        print("Error fetching account orders:", f"An error occurred: {str(e)}")
+        return
+
+    for order in order_data:
+        asset_type = order["orderLegCollection"][0]["instrument"]["assetType"]
+        order_id = order["orderId"]
+
+        if asset_type == "EQUITY" and order["orderLegCollection"][0]["instrument"]["symbol"] == ticker:
+            try:
+                resp = await client.cancel_order(order_id, account_hash)
+                assert resp.status_code == httpx.codes.OK
+            except Exception as e:
+                print(f"Error cancelling equity order {order_id}:", f"An error occurred: {str(e)}")
+        elif asset_type == "OPTION" and order["orderLegCollection"][0]["instrument"]["underlyingSymbol"] == ticker:
+            try:
+                resp = await client.cancel_order(order_id, account_hash)
+                assert resp.status_code == httpx.codes.OK
+            except Exception as e:
+                print(f"Error cancelling option order {order_id}:", f"An error occurred: {str(e)}")
+
 async def fetch_streamer_quotes_and_calculate_deltas(ticker, streamers_tickers, expiration_time, options, total_shares):
     """
     Fetch streamer quotes and calculate deltas for options on the specified ticker.
@@ -214,29 +259,7 @@ async def main():
             options = {}
             total_shares = 0
 
-
-
-
-
-
-            try:
-                resp = await client.get_orders_for_account(config["SCHWAB_ACCOUNT_HASH"], from_entered_datetime=from_entered_datetime, to_entered_datetime=to_entered_datetime, status=client.Order.Status.FILLED)
-                assert resp.status_code == httpx.codes.OK
-                order_data = resp.json()
-
-                for order in order_data:
-                    print(order)
-                    print()
-
-                    #await client.cancel_order(order["orderId"], config["SCHWAB_ACCOUNT_HASH"])
-
-            except Exception as e:
-                print("Error fetching account orders:", f"An error occurred: {str(e)}")
-
-
-
-
-
+            await cancel_existing_orders(ticker, config["SCHWAB_ACCOUNT_HASH"], from_entered_datetime, to_entered_datetime)
 
             try:
                 resp = await client.get_account(config["SCHWAB_ACCOUNT_HASH"], fields=[client.Account.Fields.POSITIONS])
