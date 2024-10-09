@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import httpx
 import numpy as np
@@ -186,6 +186,14 @@ async def main():
     option_date = datetime.strptime(date, "%Y-%m-%d").date()
     expiration_time =datetime.combine(datetime.strptime(date, '%Y-%m-%d'), datetime.min.time()) + timedelta(hours=16)
 
+    current_date = datetime.now().date()
+    from_entered_datetime = datetime.combine(current_date, datetime.min.time()).replace(
+        tzinfo=timezone(timedelta(hours=-5))
+    )
+    to_entered_datetime = datetime.combine(current_date, datetime.max.time()).replace(
+        tzinfo=timezone(timedelta(hours=-5))
+    )
+
     contract_type = client.Options.ContractType.CALL if option_type == "calls" else client.Options.ContractType.PUT
     chain_primary_key = "callExpDateMap" if option_type == "calls" else "putExpDateMap"
 
@@ -206,10 +214,33 @@ async def main():
             options = {}
             total_shares = 0
 
+
+
+
+
+
+            try:
+                resp = await client.get_orders_for_account(config["SCHWAB_ACCOUNT_HASH"], from_entered_datetime=from_entered_datetime, to_entered_datetime=to_entered_datetime, status=client.Order.Status.FILLED)
+                assert resp.status_code == httpx.codes.OK
+                order_data = resp.json()
+
+                for order in order_data:
+                    print(order)
+                    print()
+
+                    #await client.cancel_order(order["orderId"], config["SCHWAB_ACCOUNT_HASH"])
+
+            except Exception as e:
+                print("Error fetching account orders:", f"An error occurred: {str(e)}")
+
+
+
+
+
+
             try:
                 resp = await client.get_account(config["SCHWAB_ACCOUNT_HASH"], fields=[client.Account.Fields.POSITIONS])
                 assert resp.status_code == httpx.codes.OK
-
                 account_data = resp.json()
 
                 if "positions" in account_data["securitiesAccount"]:
