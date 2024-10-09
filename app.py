@@ -361,28 +361,27 @@ async def main():
                     open_interest = open_interest[mask]
                     y_mid = y_mid[mask]
 
-                if len(x) >= 2:
-                    mispricings = np.zeros(len(x))
+                mispricings = np.zeros(len(x))
 
-                    for i in range(len(x)):
-                        strike = x[i]
-                        diff = np.abs(fine_x - strike)
-                        closest_index = np.argmin(diff)
+                for i in range(len(x)):
+                    strike = x[i]
+                    diff = np.abs(fine_x - strike)
+                    closest_index = np.argmin(diff)
 
-                        interpolated_iv = interpolated_y[closest_index]
-                        mid_value = y_mid[i]
-                        option_price = barone_adesi_whaley_american_option_price(S, strike, T, r, interpolated_iv, q, option_type)
-                        diff_price = mid_value - option_price
+                    interpolated_iv = interpolated_y[closest_index]
+                    mid_value = y_mid[i]
+                    option_price = barone_adesi_whaley_american_option_price(S, strike, T, r, interpolated_iv, q, option_type)
+                    diff_price = mid_value - option_price
 
-                        mispricings[i] = diff_price
+                    mispricings[i] = diff_price
 
-                    for i in range(len(x)):
-                        print(f"Strike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}")
-                    
-                    # Write to CSV files
-                    write_csv("original_strikes_mid_iv.csv", x, y_mid_iv)
-                    write_csv("interpolated_strikes_iv.csv", fine_x, interpolated_y)
-                    print("Data written to CSV files successfully.")
+                for i in range(len(x)):
+                    print(f"Strike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}")
+                
+                # Write to CSV files
+                write_csv("original_strikes_mid_iv.csv", x, y_mid_iv)
+                write_csv("interpolated_strikes_iv.csv", fine_x, interpolated_y)
+                print("Data written to CSV files successfully.")
         else:
             print("NYSE is currently closed.")
             break
