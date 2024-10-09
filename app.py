@@ -167,6 +167,64 @@ async def adjust_delta_imbalance(ticker, delta_imbalance, config, is_closing_pos
             except Exception as e:
                 print(f"{e}")
 
+async def handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config):
+    """
+    Handle the calculation of deltas and adjust the delta imbalance for a given ticker.
+
+    Args:
+        ticker (str): The ticker symbol of the underlying security.
+        streamers_tickers (list): A list of option ticker symbols.
+        expiration_time (datetime): The expiration time of the options.
+        options (dict): Dictionary of options positions.
+        total_shares (int): The total number of shares held for the ticker.
+        config (dict): Configuration settings.
+
+    Returns:
+        None
+    """
+    if len(streamers_tickers) != 0:
+        total_deltas, delta_imbalance = await fetch_streamer_quotes_and_calculate_deltas(
+            ticker, streamers_tickers, expiration_time, options, total_shares
+        )
+        print(f"UNDERLYING SYMBOL: {ticker}")
+        print(f"TOTAL SHARES: {total_shares}")
+        print(f"TOTAL DELTAS: {total_deltas}")
+        print(f"DELTA IMBALANCE: {delta_imbalance}")
+        if delta_imbalance != 0:
+            await adjust_delta_imbalance(ticker, delta_imbalance, config)
+    elif total_shares != 0:
+        total_deltas = 0
+        delta_imbalance = total_shares + total_deltas
+        print(f"UNDERLYING SYMBOL: {ticker}")
+        print(f"TOTAL SHARES: {total_shares}")
+        print(f"TOTAL DELTAS: {total_deltas}")
+        print(f"DELTA IMBALANCE: {delta_imbalance}")
+        if delta_imbalance != 0:
+            await adjust_delta_imbalance(ticker, delta_imbalance, config, is_closing_position=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async def main():
     """
     Main function to initialize the bot.
@@ -259,7 +317,8 @@ async def main():
             options = {}
             total_shares = 0
 
-            await cancel_existing_orders(ticker, config["SCHWAB_ACCOUNT_HASH"], from_entered_datetime, to_entered_datetime)
+            if config["DRY_RUN"] != True:
+                await cancel_existing_orders(ticker, config["SCHWAB_ACCOUNT_HASH"], from_entered_datetime, to_entered_datetime)
 
             try:
                 resp = await client.get_account(config["SCHWAB_ACCOUNT_HASH"], fields=[client.Account.Fields.POSITIONS])
@@ -284,43 +343,7 @@ async def main():
             except Exception as e:
                 print("Error fetching account positions:", f"An error occurred: {str(e)}")
 
-            if len(streamers_tickers) != 0:
-                total_deltas, delta_imbalance = await fetch_streamer_quotes_and_calculate_deltas(
-                    ticker, streamers_tickers, expiration_time, options, total_shares
-                )
-                print(f"UNDERLYING SYMBOL: {ticker}")
-                print(f"TOTAL SHARES: {total_shares}")
-                print(f"TOTAL DELTAS: {total_deltas}")
-                print(f"DELTA IMBALANCE: {delta_imbalance}")
-                if delta_imbalance != 0:
-                    await adjust_delta_imbalance(ticker, delta_imbalance, config)
-            elif total_shares != 0:
-                total_deltas = 0
-                delta_imbalance = total_shares + total_deltas
-                print(f"UNDERLYING SYMBOL: {ticker}")
-                print(f"TOTAL SHARES: {total_shares}")
-                print(f"TOTAL DELTAS: {total_deltas}")
-                print(f"DELTA IMBALANCE: {delta_imbalance}")
-                if delta_imbalance != 0:
-                    await adjust_delta_imbalance(ticker, delta_imbalance, config, is_closing_position=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            await handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config)
 
 
 
