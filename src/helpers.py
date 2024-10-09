@@ -41,7 +41,7 @@ def is_nyse_open():
     """
     Check if the New York Stock Exchange (NYSE) is currently open.
     
-    The NYSE operates Monday through Friday from 9:30 AM to 3:45 PM EST.
+    The NYSE operates Monday through Friday from 9:30 AM to 3:50 PM EST.
     This function checks if the current time falls within the trading hours 
     and excludes weekends (Saturday and Sunday).
     
@@ -53,7 +53,7 @@ def is_nyse_open():
         return False
 
     open_time = time(9, 30)
-    close_time = time(15, 45)
+    close_time = time(15, 50)
 
     current_time = now.time()
 
