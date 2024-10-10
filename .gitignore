@@ -162,3 +162,4 @@ cython_debug/
 #.idea/
 
 token.json
+mispricings_log.txt
