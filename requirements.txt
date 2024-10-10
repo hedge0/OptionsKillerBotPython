@@ -5,3 +5,4 @@ numba
 httpx
 sklearn
 scipy
+nest-asyncio
