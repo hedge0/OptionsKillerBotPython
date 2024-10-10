@@ -6,25 +6,13 @@ import nest_asyncio
 
 nest_asyncio.apply()
 
+from src.schwab import cancel_existing_orders, get_account_positions, get_dividend_yield, get_option_chain_data, get_option_expiration_date, handle_delta_adjustments, initialize_client
 from src.helpers import calculate_rmse, filter_strikes, is_nyse_open, load_config, precompile_numba_functions, get_risk_free_rate, write_csv
-from src.models import barone_adesi_whaley_american_option_price, calculate_delta, calculate_implied_volatility_baw
+from src.models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
 from src.interpolations import fit_model, rbf_model, rfv_model
 
 # Constants and Global Variables
 config = {}
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 async def main():
     """
@@ -62,14 +50,7 @@ async def main():
         tzinfo=timezone(timedelta(hours=-5))
     )
 
-    contract_type = client.Options.ContractType.CALL if option_type == "calls" else client.Options.ContractType.PUT
     chain_primary_key = "callExpDateMap" if option_type == "calls" else "putExpDateMap"
-
-
-
-
-
-
 
     while True:
         if (is_nyse_open() or config["DRY_RUN"]):
@@ -79,7 +60,7 @@ async def main():
             streamers_tickers, options, total_shares = await get_account_positions(ticker, config["SCHWAB_ACCOUNT_HASH"])
             await handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config, r, q)
 
-            quote_data, S = await get_option_chain_data(ticker, option_date, contract_type, chain_primary_key)
+            quote_data, S = await get_option_chain_data(ticker, option_date, option_type, chain_primary_key)
 
             sorted_data = dict(sorted(quote_data.items()))
             filtered_strikes = filter_strikes(np.array(list(sorted_data.keys())), S, num_stdev=1.25)
