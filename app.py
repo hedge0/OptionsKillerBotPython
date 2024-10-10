@@ -18,14 +18,60 @@ from src.interpolations import fit_model, rbf_model, rfv_model
 config = {}
 client = None
 
-S = 0.0
-r = 0.0
-q = 0.0
-option_type = ""
 
-ticker = ""
-date = ""
-quote_data = defaultdict(lambda: {"bid": None, "ask": None, "mid": None, "open_interest": None, "bid_IV": None, "ask_IV": None, "mid_IV": None})
+
+
+
+
+async def get_option_expiration_date(ticker, date_index):
+    """
+    Fetch the option expiration date for a given ticker and date index.
+
+    Args:
+        ticker (str): The ticker symbol of the underlying security.
+        date_index (int): The index to select the expiration date from the list.
+
+    Returns:
+        str: The selected expiration date if successful, None otherwise.
+    """
+    try:
+        resp = await client.get_option_expiration_chain(ticker)        
+        assert resp.status_code == httpx.codes.OK
+        expirations = resp.json()
+
+        if expirations is not None and expirations["expirationList"]:
+            expiration_dates_list = []
+
+            for expiration in expirations["expirationList"]:
+                expiration_dates_list.append(expiration["expirationDate"])
+                
+            return expiration_dates_list[date_index]
+        else:
+            print("Validation Failed", f"Invalid ticker symbol: {ticker}. Please use a valid ticker.")
+            return None
+    except Exception as e:
+        print("Validation Failed", f"An error occurred: {str(e)}")
+        return None
+
+async def get_dividend_yield(ticker):
+    """
+    Fetch the dividend yield for a given ticker.
+
+    Args:
+        ticker (str): The ticker symbol of the underlying security.
+
+    Returns:
+        float: The dividend yield as a decimal (e.g., 0.02 for 2%), or None if an error occurs.
+    """
+    try:
+        resp = await client.get_quote(ticker)
+        assert resp.status_code == httpx.codes.OK
+        div = resp.json()
+
+        return float(div[ticker]["fundamental"]["divYield"]) / 100
+    except Exception as e:
+        print(f"An unexpected error occurred in options stream: {e}")
+        return None
 
 async def cancel_existing_orders(ticker, account_hash, from_date, to_date):
     """
@@ -72,7 +118,79 @@ async def cancel_existing_orders(ticker, account_hash, from_date, to_date):
             except Exception as e:
                 print(f"Error cancelling option order {order_id}:", f"An error occurred: {str(e)}")
 
-async def fetch_streamer_quotes_and_calculate_deltas(ticker, streamers_tickers, expiration_time, options, total_shares):
+async def get_account_positions(ticker, account_hash):
+    """
+    Fetch the account positions for the specified ticker.
+
+    Args:
+        ticker (str): The ticker symbol of the underlying security.
+        account_hash (str): The account identifier for retrieving positions.
+
+    Returns:
+        tuple: A tuple containing:
+            - streamers_tickers (list): A list of option ticker symbols.
+            - options (dict): Dictionary of options positions.
+            - total_shares (int): The total number of shares held for the ticker.
+    """
+    streamers_tickers = []
+    options = {}
+    total_shares = 0
+
+    try:
+        resp = await client.get_account(account_hash, fields=[client.Account.Fields.POSITIONS])
+        assert resp.status_code == httpx.codes.OK
+        account_data = resp.json()
+
+        if "positions" in account_data["securitiesAccount"]:
+            positions = account_data["securitiesAccount"]["positions"]
+            for position in positions:
+                asset_type = position["instrument"]["assetType"]
+
+                if asset_type == "EQUITY":
+                    symbol = position["instrument"]["symbol"]
+                    if symbol == ticker:
+                        total_shares = round(float(position["longQuantity"]) - float(position["shortQuantity"]))
+
+                elif asset_type == "OPTION":
+                    underlying_symbol = position["instrument"]["underlyingSymbol"]
+                    if underlying_symbol == ticker:
+                        options[position["instrument"]["symbol"]] = position
+                        streamers_tickers.append(position["instrument"]["symbol"])
+    except Exception as e:
+        print("Error fetching account positions:", f"An error occurred: {str(e)}")
+
+    return streamers_tickers, options, total_shares
+
+async def handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config, r, q):
+    """
+    Handle the calculation of deltas and adjust the delta imbalance for a given ticker.
+
+    Args:
+        ticker (str): The ticker symbol of the underlying security.
+        streamers_tickers (list): A list of option ticker symbols.
+        expiration_time (datetime): The expiration time of the options.
+        options (dict): Dictionary of options positions.
+        total_shares (int): The total number of shares held for the ticker.
+        config (dict): Configuration settings.
+        r (float): The risk-free rate.
+        q (float): The dividend yield.
+
+    Returns:
+        None
+    """
+    if len(streamers_tickers) != 0:
+        total_deltas, delta_imbalance = await fetch_streamer_quotes_and_calculate_deltas(
+            ticker, streamers_tickers, expiration_time, options, total_shares, r, q
+        )
+        if delta_imbalance != 0:
+            await adjust_delta_imbalance(ticker, delta_imbalance, config)
+    elif total_shares != 0:
+        total_deltas = 0
+        delta_imbalance = total_shares + total_deltas
+        if delta_imbalance != 0:
+            await adjust_delta_imbalance(ticker, delta_imbalance, config, is_closing_position=True)
+
+async def fetch_streamer_quotes_and_calculate_deltas(ticker, streamers_tickers, expiration_time, options, total_shares, r, q):
     """
     Fetch streamer quotes and calculate deltas for options on the specified ticker.
 
@@ -82,6 +200,8 @@ async def fetch_streamer_quotes_and_calculate_deltas(ticker, streamers_tickers, 
         expiration_time (datetime): The expiration time of the options.
         options (dict): Dictionary of options positions.
         total_shares (int): The total number of shares held for the ticker.
+        r (float): The risk-free rate.
+        q (float): The dividend yield.
 
     Returns:
         tuple: A tuple containing total_deltas (float) and delta_imbalance (float).
@@ -167,32 +287,54 @@ async def adjust_delta_imbalance(ticker, delta_imbalance, config, is_closing_pos
             except Exception as e:
                 print(f"{e}")
 
-async def handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config):
+async def get_option_chain_data(ticker, option_date, contract_type, chain_primary_key):
     """
-    Handle the calculation of deltas and adjust the delta imbalance for a given ticker.
+    Fetch the option chain data for the specified ticker and date.
 
     Args:
         ticker (str): The ticker symbol of the underlying security.
-        streamers_tickers (list): A list of option ticker symbols.
-        expiration_time (datetime): The expiration time of the options.
-        options (dict): Dictionary of options positions.
-        total_shares (int): The total number of shares held for the ticker.
-        config (dict): Configuration settings.
+        option_date (datetime.date): The option expiration date.
+        contract_type (str): The contract type (CALL or PUT).
+        chain_primary_key (str): The primary key for the option chain data (callExpDateMap or putExpDateMap).
 
     Returns:
-        None
+        tuple: A tuple containing:
+            - quote_data (defaultdict): The quote data for each strike.
+            - S (float): The underlying stock price.
     """
-    if len(streamers_tickers) != 0:
-        total_deltas, delta_imbalance = await fetch_streamer_quotes_and_calculate_deltas(
-            ticker, streamers_tickers, expiration_time, options, total_shares
-        )
-        if delta_imbalance != 0:
-            await adjust_delta_imbalance(ticker, delta_imbalance, config)
-    elif total_shares != 0:
-        total_deltas = 0
-        delta_imbalance = total_shares + total_deltas
-        if delta_imbalance != 0:
-            await adjust_delta_imbalance(ticker, delta_imbalance, config, is_closing_position=True)
+    quote_data = defaultdict(lambda: {"bid": None, "ask": None, "mid": None, "open_interest": None, "bid_IV": None, "ask_IV": None, "mid_IV": None})
+    S = 0.0
+
+    try:
+        respChain = await client.get_option_chain(ticker, from_date=option_date, to_date=option_date, contract_type=contract_type)
+        assert respChain.status_code == httpx.codes.OK
+        chain = respChain.json()
+
+        if chain["underlyingPrice"] is not None:
+            S = float(chain["underlyingPrice"])
+
+        chain_secondary_key = next(iter(chain[chain_primary_key].keys()))
+        for strike_price in chain[chain_primary_key][chain_secondary_key]:
+            option_json = chain[chain_primary_key][chain_secondary_key][strike_price][0]
+            bid_price = option_json["bid"]
+            ask_price = option_json["ask"]
+            open_interest = option_json["openInterest"]
+
+            if strike_price is not None and bid_price is not None and ask_price is not None and open_interest is not None:
+                mid_price = round(float((bid_price + ask_price) / 2), 3)
+                quote_data[float(strike_price)] = {
+                    "bid": float(bid_price),
+                    "ask": float(ask_price),
+                    "mid": float(mid_price),
+                    "open_interest": float(open_interest),
+                    "bid_IV": 0.0,
+                    "ask_IV": 0.0,
+                    "mid_IV": 0.0
+                }
+    except Exception as e:
+        print(f"An unexpected error occurred in options stream: {e}")
+
+    return quote_data, S
 
 
 
@@ -221,13 +363,15 @@ async def main():
     """
     Main function to initialize the bot.
     """
-    global client, S, r, q, option_type, ticker, date, quote_data
+    global client
     
     precompile_numba_functions()
     config = load_config()
+
     r = get_risk_free_rate(config["FRED_API_KEY"])
     if r is None:
         return
+    
     ticker = config["TICKER"]
     option_type = config["OPTION_TYPE"]
 
@@ -249,33 +393,12 @@ async def main():
         print("Login Failed", f"An error occurred: {str(e)}")
         return
     
-    try:
-        resp = await client.get_option_expiration_chain(ticker)        
-        assert resp.status_code == httpx.codes.OK
-        expirations = resp.json()
-
-        if expirations is not None and expirations["expirationList"]:
-            expiration_dates_list = []
-
-            for expiration in expirations["expirationList"]:
-                expiration_dates_list.append(expiration["expirationDate"])
-                
-            date = expiration_dates_list[config["DATE_INDEX"]]
-        else:
-            print("Validation Failed", f"Invalid ticker symbol: {ticker}. Please use a valid ticker.")
-            return
-    except Exception as e:
-        print("Validation Failed", f"An error occurred: {str(e)}")
+    date = await get_option_expiration_date(ticker, config["DATE_INDEX"])
+    if date is None:
         return
     
-    try:
-        respDiv = await client.get_quote(ticker)
-        assert respDiv.status_code == httpx.codes.OK
-        div = respDiv.json()
-
-        q = float(div[ticker]["fundamental"]["divYield"]) / 100
-    except Exception as e:
-        print(f"An unexpected error occurred in options stream: {e}")
+    q = await get_dividend_yield(ticker)
+    if q is None:
         return
 
     option_date = datetime.strptime(date, "%Y-%m-%d").date()
@@ -305,73 +428,13 @@ async def main():
 
     while True:
         if (is_nyse_open() or config["DRY_RUN"]):
-            streamers_tickers = []
-            options = {}
-            total_shares = 0
-
             if config["DRY_RUN"] != True:
                 await cancel_existing_orders(ticker, config["SCHWAB_ACCOUNT_HASH"], from_entered_datetime, to_entered_datetime)
 
-            try:
-                resp = await client.get_account(config["SCHWAB_ACCOUNT_HASH"], fields=[client.Account.Fields.POSITIONS])
-                assert resp.status_code == httpx.codes.OK
-                account_data = resp.json()
+            streamers_tickers, options, total_shares = await get_account_positions(ticker, config["SCHWAB_ACCOUNT_HASH"])
+            await handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config, r, q)
 
-                if "positions" in account_data["securitiesAccount"]:
-                    positions = account_data["securitiesAccount"]["positions"]
-                    for position in positions:
-                        asset_type = position["instrument"]["assetType"]
-
-                        if asset_type == "EQUITY":
-                            symbol = position["instrument"]["symbol"]
-                            if symbol == ticker:
-                                total_shares = round(float(position["longQuantity"]) - float(position["shortQuantity"]))
-
-                        elif asset_type == "OPTION":
-                            underlying_symbol = position["instrument"]["underlyingSymbol"]
-                            if underlying_symbol == ticker:
-                                options[position["instrument"]["symbol"]] = position
-                                streamers_tickers.append(position["instrument"]["symbol"])
-            except Exception as e:
-                print("Error fetching account positions:", f"An error occurred: {str(e)}")
-
-            await handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config)
-
-
-
-
-
-
-
-
-            try:
-                respChain = await client.get_option_chain(ticker, from_date=option_date, to_date=option_date, contract_type=contract_type)
-                assert respChain.status_code == httpx.codes.OK
-                chain = respChain.json()
-
-                if chain["underlyingPrice"] is not None:
-                    S = float(chain["underlyingPrice"])
-
-                chain_secondary_key = next(iter(chain[chain_primary_key].keys()))
-                for strike_price in chain[chain_primary_key][chain_secondary_key]:
-                    option_json = chain[chain_primary_key][chain_secondary_key][strike_price][0]
-                    bid_price = option_json["bid"]
-                    ask_price = option_json["ask"]
-                    open_interest = option_json["openInterest"]
-
-                    if strike_price is not None and bid_price is not None and ask_price is not None and open_interest is not None:
-                        mid_price = round(float((bid_price + ask_price) / 2), 3)
-                        quote_data[float(strike_price)] = {
-                            "bid": float(bid_price),
-                            "ask": float(ask_price),
-                            "mid": float(mid_price),
-                            "open_interest": float(open_interest),
-                            "bid_IV": 0.0,
-                            "ask_IV": 0.0,
-                            "mid_IV": 0.0
-                        }
-            except Exception as e:
-                print(f"An unexpected error occurred in options stream: {e}")
+            quote_data, S = await get_option_chain_data(ticker, option_date, contract_type, chain_primary_key)
 
             sorted_data = dict(sorted(quote_data.items()))
             filtered_strikes = filter_strikes(np.array(list(sorted_data.keys())), S, num_stdev=1.25)
