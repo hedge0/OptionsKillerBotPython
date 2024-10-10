@@ -302,7 +302,7 @@ async def adjust_delta_imbalance(ticker, delta_imbalance, config, is_closing_pos
             except Exception as e:
                 print(f"{e}")
 
-async def get_option_chain_data(ticker, option_date, option_type, chain_primary_key):
+async def get_option_chain_data(ticker, option_date, option_type):
     """
     Fetch the option chain data for the specified ticker and date.
 
@@ -310,7 +310,6 @@ async def get_option_chain_data(ticker, option_date, option_type, chain_primary_
         ticker (str): The ticker symbol of the underlying security.
         option_date (datetime.date): The option expiration date.
         option_type (str): The contract type (CALL or PUT).
-        chain_primary_key (str): The primary key for the option chain data (callExpDateMap or putExpDateMap).
 
     Returns:
         tuple: A tuple containing:
@@ -320,6 +319,7 @@ async def get_option_chain_data(ticker, option_date, option_type, chain_primary_
     quote_data = defaultdict(lambda: {"bid": None, "ask": None, "mid": None, "open_interest": None, "bid_IV": None, "ask_IV": None, "mid_IV": None})
     S = 0.0
     contract_type = client.Options.ContractType.CALL if option_type == "calls" else client.Options.ContractType.PUT
+    chain_primary_key = "callExpDateMap" if option_type == "calls" else "putExpDateMap"
 
     try:
         respChain = await client.get_option_chain(ticker, from_date=option_date, to_date=option_date, contract_type=contract_type)

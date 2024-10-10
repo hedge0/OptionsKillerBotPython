@@ -50,8 +50,6 @@ async def main():
         tzinfo=timezone(timedelta(hours=-5))
     )
 
-    chain_primary_key = "callExpDateMap" if option_type == "calls" else "putExpDateMap"
-
     while True:
         if (is_nyse_open() or config["DRY_RUN"]):
             if config["DRY_RUN"] != True:
@@ -60,7 +58,7 @@ async def main():
             streamers_tickers, options, total_shares = await get_account_positions(ticker, config["SCHWAB_ACCOUNT_HASH"])
             await handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config, r, q)
 
-            quote_data, S = await get_option_chain_data(ticker, option_date, option_type, chain_primary_key)
+            quote_data, S = await get_option_chain_data(ticker, option_date, option_type)
 
             sorted_data = dict(sorted(quote_data.items()))
             filtered_strikes = filter_strikes(np.array(list(sorted_data.keys())), S, num_stdev=1.25)
