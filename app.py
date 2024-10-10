@@ -13,11 +13,16 @@ from src.interpolations import fit_model, rbf_model, rfv_model
 
 # Constants and Global Variables
 config = {}
+rmse_vals = []
 
 async def main():
     """
     Main function to initialize the bot.
     """
+    with open("mispricings_log.txt", "w") as log_file:
+        log_file.write("Mispricing Log\n")
+        log_file.write("=" * 40 + "\n")
+
     precompile_numba_functions()
     config = load_config()
 
@@ -27,6 +32,7 @@ async def main():
     
     ticker = config["TICKER"]
     option_type = config["OPTION_TYPE"]
+    min_mispricing = config["MIN_UNDERPRICED"]
 
     await initialize_client(config)
     
@@ -103,7 +109,16 @@ async def main():
 
                 y_pred = np.interp(x_normalized, fine_x_normalized, interpolated_y)
                 rmse = calculate_rmse(y_mid_iv, y_pred)
-                print(rmse)
+                rmse_vals.append(rmse)
+
+                if len(rmse_vals) > 60:
+                    rmse_vals.pop(0)
+
+                mean_rmse = np.mean(rmse_vals)
+                stdev_rmse = np.std(rmse_vals)
+                upper_bound_rmse = mean_rmse + 4 * stdev_rmse
+
+
 
                 fine_x = np.linspace(np.min(x), np.max(x), 800)
 
@@ -130,13 +145,15 @@ async def main():
 
                     mispricings[i] = diff_price
 
-                for i in range(len(x)):
-                    print(f"Strike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}")
+                with open("mispricings_log.txt", "a") as log_file:
+                    for i in range(len(x)):
+                        if abs(mispricings[i]) > min_mispricing:
+                            log_file.write(f"Strike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}, RMSE: {rmse}, upper RMSE:{upper_bound_rmse}\n")
                 
                 # Write to CSV files
-                write_csv("original_strikes_mid_iv.csv", x, y_mid_iv)
-                write_csv("interpolated_strikes_iv.csv", fine_x, interpolated_y)
-                print("Data written to CSV files successfully.")
+                #write_csv("original_strikes_mid_iv.csv", x, y_mid_iv)
+                #write_csv("interpolated_strikes_iv.csv", fine_x, interpolated_y)
+                #print("Data written to CSV files successfully.")
         else:
             print("NYSE is currently closed.")
             break
@@ -144,7 +161,7 @@ async def main():
         await asyncio.sleep(config["TIME_TO_REST"])
 
         # ADDED FOR NOW
-        break
+        #break
 
 if __name__ == "__main__":
     asyncio.run(main())
