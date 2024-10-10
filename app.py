@@ -18,7 +18,6 @@ async def main():
     """
     Main function to initialize the bot.
     """
-    
     precompile_numba_functions()
     config = load_config()
 
