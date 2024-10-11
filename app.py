@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import numpy as np
+from enum import Enum
 from sklearn.preprocessing import MinMaxScaler
 import asyncio
 import nest_asyncio
@@ -11,14 +12,21 @@ from src.helpers import filter_strikes, is_nyse_open, load_config, precompile_nu
 from src.models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
 from src.interpolations import fit_model, rbf_model, rfv_model
 
+class TradeState(Enum):
+    NOT_IN_POSITION = "not in position"
+    PENDING = "pending"
+    IN_POSITION = "in position"
+
 # Constants and Global Variables
+trade_state = TradeState.NOT_IN_POSITION
 config = {}
-in_trade = False
 
 async def main():
     """
     Main function to initialize the bot.
     """
+    global trade_state
+
     with open("mispricings_log.txt", "w") as log_file:
         log_file.write("Mispricing Log\n")
         log_file.write("=" * 40 + "\n")
@@ -60,7 +68,7 @@ async def main():
             if config["DRY_RUN"] != True:
                 await cancel_existing_orders(ticker, config["SCHWAB_ACCOUNT_HASH"], from_entered_datetime, to_entered_datetime)
 
-            if in_trade:
+            if trade_state in {TradeState.PENDING, TradeState.IN_POSITION}:
                 streamers_tickers, options, total_shares = await get_account_positions(ticker, config["SCHWAB_ACCOUNT_HASH"])
                 await handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config, r, q)
 
