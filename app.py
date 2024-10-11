@@ -116,9 +116,7 @@ async def main():
 
                 mean_rmse = np.mean(rmse_vals)
                 stdev_rmse = np.std(rmse_vals)
-                upper_bound_rmse = mean_rmse + 4 * stdev_rmse
-
-
+                upper_bound_rmse = mean_rmse + 3 * stdev_rmse
 
                 fine_x = np.linspace(np.min(x), np.max(x), 800)
 
@@ -145,10 +143,13 @@ async def main():
 
                     mispricings[i] = diff_price
 
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                # Write mispricing information to the log file if the absolute value is greater than min_mispricing
                 with open("mispricings_log.txt", "a") as log_file:
                     for i in range(len(x)):
                         if abs(mispricings[i]) > min_mispricing:
-                            log_file.write(f"Strike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}, RMSE: {rmse}, upper RMSE:{upper_bound_rmse}\n")
+                            log_file.write(f"{timestamp}\tStrike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}, RMSE: {rmse}, Upper RMSE: {upper_bound_rmse}\n")
                 
                 # Write to CSV files
                 #write_csv("original_strikes_mid_iv.csv", x, y_mid_iv)
