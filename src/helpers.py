@@ -113,21 +113,6 @@ def filter_strikes(x, S, num_stdev=1.25, two_sigma_move=False):
 
     return x[(x >= lower_bound) & (x <= upper_bound)]
 
-def calculate_rmse(y_true, y_pred):
-    """
-    Calculate the Root Mean Squared Error (RMSE) between the observed and predicted implied volatilities.
-
-    Args:
-        x_normalized (array-like): Normalized strike prices.
-        y_true (array-like): Observed implied volatilities.
-        y_pred (array-like): Predicted implied volatilities from the interpolation model.
-
-    Returns:
-        float: The computed RMSE value.
-    """
-    rmse = np.sqrt(np.mean((y_true - y_pred) ** 2))
-    return rmse
-
 def write_csv(filename, x_vals, y_vals):
     """
     Write x and y values to a CSV file.

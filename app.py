@@ -7,13 +7,13 @@ import nest_asyncio
 nest_asyncio.apply()
 
 from src.schwab import cancel_existing_orders, get_account_positions, get_dividend_yield, get_option_chain_data, get_option_expiration_date, handle_delta_adjustments, initialize_client
-from src.helpers import calculate_rmse, filter_strikes, is_nyse_open, load_config, precompile_numba_functions, get_risk_free_rate, write_csv
+from src.helpers import filter_strikes, is_nyse_open, load_config, precompile_numba_functions, get_risk_free_rate, write_csv
 from src.models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
 from src.interpolations import fit_model, rbf_model, rfv_model
 
 # Constants and Global Variables
 config = {}
-rmse_vals = []
+in_trade = False
 
 async def main():
     """
@@ -60,8 +60,9 @@ async def main():
             if config["DRY_RUN"] != True:
                 await cancel_existing_orders(ticker, config["SCHWAB_ACCOUNT_HASH"], from_entered_datetime, to_entered_datetime)
 
-            streamers_tickers, options, total_shares = await get_account_positions(ticker, config["SCHWAB_ACCOUNT_HASH"])
-            await handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config, r, q)
+            if in_trade:
+                streamers_tickers, options, total_shares = await get_account_positions(ticker, config["SCHWAB_ACCOUNT_HASH"])
+                await handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config, r, q)
 
             quote_data, S = await get_option_chain_data(ticker, option_date, option_type)
 
@@ -107,28 +108,7 @@ async def main():
                 # Weighted Averaging: RFV 75%, RBF 25%
                 interpolated_y = 0.75 * rfv_interpolated_y + 0.25 * rbf_interpolated_y
 
-                y_pred = np.interp(x_normalized, fine_x_normalized, interpolated_y)
-                rmse = calculate_rmse(y_mid_iv, y_pred)
-                rmse_vals.append(rmse)
-
-                if len(rmse_vals) > 60:
-                    rmse_vals.pop(0)
-
-                mean_rmse = np.mean(rmse_vals)
-                stdev_rmse = np.std(rmse_vals)
-                upper_bound_rmse = mean_rmse + 3 * stdev_rmse
-
                 fine_x = np.linspace(np.min(x), np.max(x), 800)
-
-                if config["MIN_OI"] > 0.0:
-                    mask = open_interest > config["MIN_OI"]
-                    x = x[mask]
-                    y_bid_iv = y_bid_iv[mask]
-                    y_ask_iv = y_ask_iv[mask]
-                    y_mid_iv = y_mid_iv[mask]
-                    open_interest = open_interest[mask]
-                    y_mid = y_mid[mask]
-
                 mispricings = np.zeros(len(x))
 
                 for i in range(len(x)):
@@ -143,13 +123,23 @@ async def main():
 
                     mispricings[i] = diff_price
 
+                if config["MIN_OI"] > 0.0:
+                    mask = open_interest > config["MIN_OI"]
+                    x = x[mask]
+                    y_bid_iv = y_bid_iv[mask]
+                    y_ask_iv = y_ask_iv[mask]
+                    y_mid_iv = y_mid_iv[mask]
+                    open_interest = open_interest[mask]
+                    y_mid = y_mid[mask]
+                    mispricings = mispricings[mask]
+
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                 # Write mispricing information to the log file if the absolute value is greater than min_mispricing
                 with open("mispricings_log.txt", "a") as log_file:
                     for i in range(len(x)):
                         if abs(mispricings[i]) > min_mispricing:
-                            log_file.write(f"{timestamp}\tStrike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}, RMSE: {rmse}, Upper RMSE: {upper_bound_rmse}\n")
+                            log_file.write(f"{timestamp}\tStrike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}\n")
                 
                 # Write to CSV files
                 #write_csv("original_strikes_mid_iv.csv", x, y_mid_iv)
