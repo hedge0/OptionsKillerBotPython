@@ -7,8 +7,8 @@ import nest_asyncio
 
 nest_asyncio.apply()
 
-from src.schwab import cancel_existing_orders, get_account_positions, get_dividend_yield, get_option_chain_data, get_option_expiration_date, handle_delta_adjustments, initialize_client
-from src.helpers import filter_strikes, is_nyse_open, load_config, precompile_numba_functions, get_risk_free_rate, write_csv
+from src.schwab import authenticate_schwab_client, fetch_account_numbers, get_option_chain_data, handle_delta_adjustments
+from src.helpers import cancel_existing_orders, filter_strikes, get_account_positions, get_dividend_yield, get_option_expiration_date, is_nyse_open, load_config, precompile_numba_functions, get_risk_free_rate, write_csv
 from src.models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
 from src.interpolations import fit_model, rbf_model, rfv_model
 
@@ -27,29 +27,27 @@ async def main():
     """
     global trade_state
 
-    with open("mispricings_log.txt", "w") as log_file:
-        log_file.write("Mispricing Log\n")
-        log_file.write("=" * 40 + "\n")
-
     precompile_numba_functions()
     config = load_config()
 
-    r = get_risk_free_rate(config["FRED_API_KEY"])
-    if r is None:
-        return
-    
+    await authenticate_schwab_client(config)
+    print(await fetch_account_numbers())
+    print()
+
     ticker = config["TICKER"]
     option_type = config["OPTION_TYPE"]
     min_mispricing = config["MIN_UNDERPRICED"]
+    
+    r = get_risk_free_rate(config["FRED_API_KEY"])
+    if r is None:
+        return
 
-    await initialize_client(config)
+    q = await get_dividend_yield(ticker)
+    if q is None:
+        return
     
     date = await get_option_expiration_date(ticker, config["DATE_INDEX"])
     if date is None:
-        return
-    
-    q = await get_dividend_yield(ticker)
-    if q is None:
         return
 
     option_date = datetime.strptime(date, "%Y-%m-%d").date()
@@ -144,10 +142,9 @@ async def main():
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                 # Write mispricing information to the log file if the absolute value is greater than min_mispricing
-                with open("mispricings_log.txt", "a") as log_file:
-                    for i in range(len(x)):
-                        if abs(mispricings[i]) > min_mispricing:
-                            log_file.write(f"{timestamp}\tStrike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}\n")
+                for i in range(len(x)):
+                    if abs(mispricings[i]) > min_mispricing:
+                        print(f"{timestamp}\tStrike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}\n")
                 
                 # Write to CSV files
                 #write_csv("original_strikes_mid_iv.csv", x, y_mid_iv)
@@ -160,7 +157,7 @@ async def main():
         await asyncio.sleep(config["TIME_TO_REST"])
 
         # ADDED FOR NOW
-        #break
+        break
 
 if __name__ == "__main__":
     asyncio.run(main())
