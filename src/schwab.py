@@ -8,9 +8,9 @@ from src.models import calculate_delta, calculate_implied_volatility_baw
 
 client = None
 
-async def initialize_client(config):
+async def authenticate_schwab_client(config):
     """
-    Initialize the Schwab client and authenticate the user.
+    Authenticate the user using the Schwab client.
 
     Args:
         config (dict): Configuration settings containing API credentials.
@@ -28,81 +28,73 @@ async def initialize_client(config):
             asyncio=True
         )
         print("Login successful.\n")
-
-        resp = await client.get_account_numbers()
-        assert resp.status_code == httpx.codes.OK
-
-        account_ID_data = resp.json()
-        print(account_ID_data, "\n")
     except Exception as e:
-        print("Login Failed", f"An error occurred: {str(e)}")
+        print(f"Login Failed: An error occurred: {str(e)}")
         client = None
 
-async def get_option_expiration_date(ticker, date_index):
+async def fetch_account_numbers():
     """
-    Fetch the option expiration date for a given ticker and date index.
-
-    Args:
-        ticker (str): The ticker symbol of the underlying security.
-        date_index (int): The index to select the expiration date from the list.
+    Fetch account numbers from the authenticated Schwab client.
 
     Returns:
-        str: The selected expiration date if successful, None otherwise.
+        dict: Account ID data or None if retrieval fails.
     """
     try:
-        resp = await client.get_option_expiration_chain(ticker)        
+        resp = await client.get_account_numbers()
         assert resp.status_code == httpx.codes.OK
-        expirations = resp.json()
-
-        if expirations is not None and expirations["expirationList"]:
-            expiration_dates_list = []
-
-            for expiration in expirations["expirationList"]:
-                expiration_dates_list.append(expiration["expirationDate"])
-                
-            return expiration_dates_list[date_index]
-        else:
-            print("Validation Failed", f"Invalid ticker symbol: {ticker}. Please use a valid ticker.")
-            return None
+        return resp.json()
     except Exception as e:
-        print("Validation Failed", f"An error occurred: {str(e)}")
+        print(f"Failed to fetch account numbers: {str(e)}")
         return None
 
-async def get_dividend_yield(ticker):
+async def fetch_option_expiration_chain(ticker):
     """
-    Fetch the dividend yield for a given ticker.
+    Fetch the option expiration chain for a given ticker.
 
     Args:
         ticker (str): The ticker symbol of the underlying security.
 
     Returns:
-        float: The dividend yield as a decimal (e.g., 0.02 for 2%), or None if an error occurs.
+        dict: The expiration chain if successful, None otherwise.
+    """
+    try:
+        resp = await client.get_option_expiration_chain(ticker)
+        assert resp.status_code == httpx.codes.OK
+        return resp.json()
+    except Exception as e:
+        print(f"Failed to fetch expiration chain: {str(e)}")
+        return None
+
+async def fetch_dividend_data(ticker):
+    """
+    Fetch the raw dividend data for a given ticker.
+
+    Args:
+        ticker (str): The ticker symbol of the underlying security.
+
+    Returns:
+        dict: The raw dividend data, or None if an error occurs.
     """
     try:
         resp = await client.get_quote(ticker)
         assert resp.status_code == httpx.codes.OK
-        div = resp.json()
-
-        return float(div[ticker]["fundamental"]["divYield"]) / 100
+        return resp.json()
     except Exception as e:
-        print(f"An unexpected error occurred in options stream: {e}")
+        print(f"Failed to fetch dividend data for {ticker}: {e}")
         return None
 
-async def cancel_existing_orders(ticker, account_hash, from_date, to_date):
+async def fetch_orders_for_account(account_hash, from_date, to_date):
     """
-    Cancel existing orders for the specified ticker.
+    Fetch orders for a given account within a specified date range.
 
     Args:
-        ticker (str): The ticker symbol of the underlying security.
         account_hash (str): The account identifier for order management.
         from_date (datetime): The start date for filtering orders.
         to_date (datetime): The end date for filtering orders.
 
     Returns:
-        None
+        list: A list of orders, or None if an error occurs.
     """
-    order_data = []
-
     try:
         resp = await client.get_orders_for_account(
             account_hash, 
@@ -111,70 +103,58 @@ async def cancel_existing_orders(ticker, account_hash, from_date, to_date):
             status=client.Order.Status.WORKING
         )
         assert resp.status_code == httpx.codes.OK
-        order_data = resp.json()
+        return resp.json()
     except Exception as e:
-        print("Error fetching account orders:", f"An error occurred: {str(e)}")
-        return
+        print(f"Error fetching account orders: {str(e)}")
+        return None
 
-    for order in order_data:
-        asset_type = order["orderLegCollection"][0]["instrument"]["assetType"]
-        order_id = order["orderId"]
-
-        if asset_type == "EQUITY" and order["orderLegCollection"][0]["instrument"]["symbol"] == ticker:
-            try:
-                resp = await client.cancel_order(order_id, account_hash)
-                assert resp.status_code == httpx.codes.OK
-            except Exception as e:
-                print(f"Error cancelling equity order {order_id}:", f"An error occurred: {str(e)}")
-        elif asset_type == "OPTION" and order["orderLegCollection"][0]["instrument"]["underlyingSymbol"] == ticker:
-            try:
-                resp = await client.cancel_order(order_id, account_hash)
-                assert resp.status_code == httpx.codes.OK
-            except Exception as e:
-                print(f"Error cancelling option order {order_id}:", f"An error occurred: {str(e)}")
-
-async def get_account_positions(ticker, account_hash):
+async def cancel_order(order_id, account_hash):
     """
-    Fetch the account positions for the specified ticker.
+    Cancel an existing order for a given account.
 
     Args:
-        ticker (str): The ticker symbol of the underlying security.
-        account_hash (str): The account identifier for retrieving positions.
+        order_id (str): The order ID to cancel.
+        account_hash (str): The account identifier for order management.
 
     Returns:
-        tuple: A tuple containing:
-            - streamers_tickers (list): A list of option ticker symbols.
-            - options (dict): Dictionary of options positions.
-            - total_shares (int): The total number of shares held for the ticker.
+        bool: True if the order was successfully canceled, False otherwise.
     """
-    streamers_tickers = []
-    options = {}
-    total_shares = 0
+    try:
+        resp = await client.cancel_order(order_id, account_hash)
+        assert resp.status_code == httpx.codes.OK
+        return True
+    except Exception as e:
+        print(f"Error cancelling order {order_id}: {str(e)}")
+        return False
 
+async def fetch_account_data(account_hash):
+    """
+    Fetch the account data for the specified account.
+
+    Args:
+        account_hash (str): The account identifier.
+
+    Returns:
+        dict: The account data if successful, None otherwise.
+    """
     try:
         resp = await client.get_account(account_hash, fields=[client.Account.Fields.POSITIONS])
         assert resp.status_code == httpx.codes.OK
-        account_data = resp.json()
-
-        if "positions" in account_data["securitiesAccount"]:
-            positions = account_data["securitiesAccount"]["positions"]
-            for position in positions:
-                asset_type = position["instrument"]["assetType"]
-
-                if asset_type == "EQUITY":
-                    symbol = position["instrument"]["symbol"]
-                    if symbol == ticker:
-                        total_shares = round(float(position["longQuantity"]) - float(position["shortQuantity"]))
-
-                elif asset_type == "OPTION":
-                    underlying_symbol = position["instrument"]["underlyingSymbol"]
-                    if underlying_symbol == ticker:
-                        options[position["instrument"]["symbol"]] = position
-                        streamers_tickers.append(position["instrument"]["symbol"])
+        return resp.json()
     except Exception as e:
-        print("Error fetching account positions:", f"An error occurred: {str(e)}")
+        print(f"Error fetching account data: {str(e)}")
+        return None
 
-    return streamers_tickers, options, total_shares
+
+
+
+
+
+
+
+
+
+
 
 async def handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config, r, q):
     """

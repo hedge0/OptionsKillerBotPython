@@ -4,6 +4,7 @@ import numpy as np
 from datetime import datetime, time
 from dotenv import load_dotenv
 from fredapi import Fred
+from src.schwab import cancel_order, fetch_account_data, fetch_dividend_data, fetch_option_expiration_chain, fetch_orders_for_account
 from src.interpolations import rfv_model
 from src.models import barone_adesi_whaley_american_option_price, calculate_delta, calculate_implied_volatility_baw
 
@@ -129,3 +130,110 @@ def write_csv(filename, x_vals, y_vals):
             writer.writerow([x, y])
 
     print(f"Data written to {filename}")
+
+async def get_option_expiration_date(ticker, date_index):
+    """
+    Fetch the option expiration date for a given ticker and date index.
+
+    Args:
+        ticker (str): The ticker symbol of the underlying security.
+        date_index (int): The index to select the expiration date from the list.
+
+    Returns:
+        str: The selected expiration date if successful, None otherwise.
+    """
+    expirations = await fetch_option_expiration_chain(ticker)
+    
+    if expirations is not None and expirations.get("expirationList"):
+        expiration_dates_list = [expiration["expirationDate"] for expiration in expirations["expirationList"]]
+        return expiration_dates_list[date_index] if date_index < len(expiration_dates_list) else None
+    else:
+        print(f"Validation Failed: Invalid ticker symbol: {ticker}. Please use a valid ticker.")
+        return None
+
+async def get_dividend_yield(ticker):
+    """
+    Fetch and parse the dividend yield for a given ticker.
+
+    Args:
+        ticker (str): The ticker symbol of the underlying security.
+
+    Returns:
+        float: The dividend yield as a decimal (e.g., 0.02 for 2%), or None if an error occurs.
+    """
+    div_data = await fetch_dividend_data(ticker)
+    
+    if div_data and ticker in div_data:
+        try:
+            return float(div_data[ticker]["fundamental"]["divYield"]) / 100
+        except (KeyError, ValueError) as e:
+            print(f"Error parsing dividend yield for {ticker}: {e}")
+            return None
+    else:
+        print(f"Invalid data for {ticker}.")
+        return None
+
+async def cancel_existing_orders(ticker, account_hash, from_date, to_date):
+    """
+    Cancel existing orders for the specified ticker.
+
+    Args:
+        ticker (str): The ticker symbol of the underlying security.
+        account_hash (str): The account identifier for order management.
+        from_date (datetime): The start date for filtering orders.
+        to_date (datetime): The end date for filtering orders.
+
+    Returns:
+        None
+    """
+    order_data = await fetch_orders_for_account(account_hash, from_date, to_date)
+
+    if not order_data:
+        return
+
+    for order in order_data:
+        asset_type = order["orderLegCollection"][0]["instrument"]["assetType"]
+        order_id = order["orderId"]
+
+        if asset_type == "EQUITY" and order["orderLegCollection"][0]["instrument"]["symbol"] == ticker:
+            await cancel_order(order_id, account_hash)
+        elif asset_type == "OPTION" and order["orderLegCollection"][0]["instrument"]["underlyingSymbol"] == ticker:
+            await cancel_order(order_id, account_hash)
+
+async def get_account_positions(ticker, account_hash):
+    """
+    Fetch the account positions for the specified ticker.
+
+    Args:
+        ticker (str): The ticker symbol of the underlying security.
+        account_hash (str): The account identifier for retrieving positions.
+
+    Returns:
+        tuple: A tuple containing:
+            - streamers_tickers (list): A list of option ticker symbols.
+            - options (dict): Dictionary of options positions.
+            - total_shares (int): The total number of shares held for the ticker.
+    """
+    account_data = await fetch_account_data(account_hash)
+    if not account_data:
+        return [], {}, 0
+
+    streamers_tickers = [
+        position["instrument"]["symbol"]
+        for position in account_data["securitiesAccount"].get("positions", [])
+        if position["instrument"]["assetType"] == "OPTION" and position["instrument"]["underlyingSymbol"] == ticker
+    ]
+
+    options = {
+        position["instrument"]["symbol"]: position
+        for position in account_data["securitiesAccount"].get("positions", [])
+        if position["instrument"]["assetType"] == "OPTION" and position["instrument"]["underlyingSymbol"] == ticker
+    }
+
+    total_shares = sum(
+        round(float(position["longQuantity"]) - float(position["shortQuantity"]))
+        for position in account_data["securitiesAccount"].get("positions", [])
+        if position["instrument"]["assetType"] == "EQUITY" and position["instrument"]["symbol"] == ticker
+    )
+
+    return streamers_tickers, options, total_shares
