@@ -3,18 +3,18 @@ from datetime import datetime
 from schwab.orders.equities import equity_buy_market, equity_sell_short_market, equity_sell_market, equity_buy_to_cover_market
 
 from src.models import calculate_delta, calculate_implied_volatility_baw
-from src.schwab import SchwabClientManager
+from src.client_manager import ClientManager
 
 class SchwabManager:
     def __init__(self, config):
         """
-        Initialize the SchwabDeltaManager and authenticate the Schwab client.
+        Initialize the SchwabManager and set up the client manager.
         
         Args:
-            config (dict): Configuration settings.
+            config (dict): Configuration settings for Schwab API.
         """
         self.config = config
-        self.client_manager = SchwabClientManager(config)
+        self.client_manager = ClientManager(config)
 
     async def initialize(self):
         """
@@ -25,14 +25,14 @@ class SchwabManager:
 
     async def get_option_expiration_date(self, ticker, date_index):
         """
-        Fetch the option expiration date for a given ticker and date index.
+        Fetch the option expiration date for a given ticker and index.
 
         Args:
             ticker (str): The ticker symbol of the underlying security.
-            date_index (int): The index to select the expiration date from the list.
+            date_index (int): Index to select the expiration date from the expiration list.
 
         Returns:
-            str: The selected expiration date if successful, None otherwise.
+            str: Selected expiration date if successful, None otherwise.
         """
         expirations = await self.client_manager.fetch_option_expiration_chain(ticker)
         
@@ -67,11 +67,10 @@ class SchwabManager:
 
     async def cancel_existing_orders(self, ticker, from_date, to_date):
         """
-        Cancel existing orders for the specified ticker.
+        Cancel existing orders for a specified ticker within a date range.
 
         Args:
             ticker (str): The ticker symbol of the underlying security.
-            account_hash (str): The account identifier for order management.
             from_date (datetime): The start date for filtering orders.
             to_date (datetime): The end date for filtering orders.
 
@@ -94,17 +93,16 @@ class SchwabManager:
 
     async def get_account_positions(self, ticker):
         """
-        Fetch the account positions for the specified ticker.
+        Fetch the account positions for a specified ticker.
 
         Args:
             ticker (str): The ticker symbol of the underlying security.
-            account_hash (str): The account identifier for retrieving positions.
 
         Returns:
-            tuple: A tuple containing:
-                - streamers_tickers (list): A list of option ticker symbols.
+            tuple: Contains:
+                - streamers_tickers (list): List of option ticker symbols.
                 - options (dict): Dictionary of options positions.
-                - total_shares (int): The total number of shares held for the ticker.
+                - total_shares (int): Total number of shares held for the ticker.
         """
         account_data = await self.client_manager.fetch_account_data(self.config["SCHWAB_ACCOUNT_HASH"])
         if not account_data:
@@ -132,7 +130,7 @@ class SchwabManager:
 
     async def fetch_streamer_quotes_and_calculate_deltas(self, ticker, streamers_tickers, expiration_time, options, total_shares, r, q):
         """
-        Fetch streamer quotes and calculate deltas for options on the specified ticker.
+        Fetch streamer quotes and calculate delta values for options on the specified ticker.
 
         Args:
             ticker (str): The ticker symbol of the underlying security.
@@ -144,7 +142,9 @@ class SchwabManager:
             q (float): The dividend yield.
 
         Returns:
-            tuple: A tuple containing total_deltas (float) and delta_imbalance (float).
+            tuple: Contains:
+                - total_deltas (float): Total delta values.
+                - delta_imbalance (float): Calculated delta imbalance.
         """
         total_deltas = 0.0
         enable_hedge = False
@@ -183,12 +183,12 @@ class SchwabManager:
 
     async def adjust_delta_imbalance(self, ticker, delta_imbalance, is_closing_position=False):
         """
-        Adjust the delta imbalance by placing appropriate market orders to hedge the exposure or close the position.
+        Adjust the delta imbalance by placing appropriate market orders to hedge or close the position.
 
         Args:
             ticker (str): The ticker symbol of the security.
             delta_imbalance (float): The calculated delta imbalance that needs to be hedged.
-            is_closing_position (bool, optional): If True, the function will close the position rather than hedging. Defaults to False.
+            is_closing_position (bool, optional): If True, close the position rather than hedging.
 
         Returns:
             None
@@ -214,9 +214,9 @@ class SchwabManager:
                 print(f"Placing order for +{-1 * delta_imbalance} shares...")
                 await self.client_manager.place_order(self.config["SCHWAB_ACCOUNT_HASH"], order)
 
-    async def handle_delta_adjustments(self, ticker, streamers_tickers, expiration_time, options, total_shares, config, r, q):
+    async def handle_delta_adjustments(self, ticker, streamers_tickers, expiration_time, options, total_shares, r, q):
         """
-        Handle the calculation of deltas and adjust the delta imbalance for a given ticker.
+        Handle delta calculations and adjust delta imbalance for the given ticker.
 
         Args:
             ticker (str): The ticker symbol of the underlying security.
@@ -224,7 +224,6 @@ class SchwabManager:
             expiration_time (datetime): The expiration time of the options.
             options (dict): Dictionary of options positions.
             total_shares (int): The total number of shares held for the ticker.
-            config (dict): Configuration settings.
             r (float): The risk-free rate.
             q (float): The dividend yield.
 
@@ -236,16 +235,16 @@ class SchwabManager:
                 ticker, streamers_tickers, expiration_time, options, total_shares, r, q
             )
             if delta_imbalance != 0:
-                await self.adjust_delta_imbalance(ticker, delta_imbalance, config)
+                await self.adjust_delta_imbalance(ticker, delta_imbalance)
         elif total_shares != 0:
             total_deltas = 0
             delta_imbalance = total_shares + total_deltas
             if delta_imbalance != 0:
-                await self.adjust_delta_imbalance(ticker, delta_imbalance, config, is_closing_position=True)
+                await self.adjust_delta_imbalance(ticker, delta_imbalance, is_closing_position=True)
 
     async def get_option_chain_data(self, ticker, option_date, option_type):
         """
-        Fetch the option chain data for the specified ticker and date.
+        Fetch the option chain data for the specified ticker and expiration date.
 
         Args:
             ticker (str): The ticker symbol of the underlying security.
@@ -253,7 +252,7 @@ class SchwabManager:
             option_type (str): The contract type (either 'calls' or 'puts').
 
         Returns:
-            tuple: A tuple containing:
+            tuple: Contains:
                 - quote_data (defaultdict): The quote data for each strike.
                 - S (float): The underlying stock price.
         """

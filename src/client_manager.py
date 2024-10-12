@@ -1,7 +1,7 @@
 import httpx
 from schwab.auth import easy_client
 
-class SchwabClientManager:
+class ClientManager:
     def __init__(self, config):
         """
         Initialize SchwabClientManager and set up client.
