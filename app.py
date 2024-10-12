@@ -7,8 +7,12 @@ import nest_asyncio
 
 nest_asyncio.apply()
 
+from src.load_json import load_json_file
+from src.filters import filter_strikes
+from src.load_env import load_env_file
+from src.fred import fetch_risk_free_rate
 from src.schwab_manager import SchwabManager
-from src.helpers import filter_strikes, is_nyse_open, load_config, precompile_numba_functions, get_risk_free_rate, write_csv
+from src.helpers import is_nyse_open, precompile_numba_functions, write_csv
 from src.models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
 from src.interpolations import fit_model, rbf_model, rfv_model
 
@@ -28,7 +32,14 @@ async def main():
     global trade_state
 
     precompile_numba_functions()
-    config = load_config()
+    config = load_env_file()
+    stocks_list = load_json_file("stocks.json")
+
+    print(stocks_list)
+
+    r = fetch_risk_free_rate(config["FRED_API_KEY"])
+    if r is None:
+        return
 
     manager = SchwabManager(config)
     await manager.initialize()
@@ -36,10 +47,6 @@ async def main():
     ticker = config["TICKER"]
     option_type = config["OPTION_TYPE"]
     min_mispricing = config["MIN_UNDERPRICED"]
-    
-    r = get_risk_free_rate(config["FRED_API_KEY"])
-    if r is None:
-        return
 
     q = await manager.get_dividend_yield(ticker)
     if q is None:
