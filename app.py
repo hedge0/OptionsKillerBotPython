@@ -7,8 +7,7 @@ import nest_asyncio
 
 nest_asyncio.apply()
 
-from src.layer_2 import cancel_existing_orders, get_account_positions, get_dividend_yield, get_option_chain_data, get_option_expiration_date, handle_delta_adjustments
-from src.schwab import authenticate_schwab_client, fetch_account_numbers
+from src.layer_2_schwab import SchwabManager
 from src.helpers import filter_strikes, is_nyse_open, load_config, precompile_numba_functions, get_risk_free_rate, write_csv
 from src.models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
 from src.interpolations import fit_model, rbf_model, rfv_model
@@ -31,9 +30,8 @@ async def main():
     precompile_numba_functions()
     config = load_config()
 
-    await authenticate_schwab_client(config)
-    print(await fetch_account_numbers())
-    print()
+    manager = SchwabManager(config)
+    await manager.initialize()
 
     ticker = config["TICKER"]
     option_type = config["OPTION_TYPE"]
@@ -43,11 +41,11 @@ async def main():
     if r is None:
         return
 
-    q = await get_dividend_yield(ticker)
+    q = await manager.get_dividend_yield(ticker)
     if q is None:
         return
     
-    date = await get_option_expiration_date(ticker, config["DATE_INDEX"])
+    date = await manager.get_option_expiration_date(ticker, config["DATE_INDEX"])
     if date is None:
         return
 
@@ -65,13 +63,13 @@ async def main():
     while True:
         if (is_nyse_open() or config["DRY_RUN"]):
             if config["DRY_RUN"] != True:
-                await cancel_existing_orders(ticker, config["SCHWAB_ACCOUNT_HASH"], from_entered_datetime, to_entered_datetime)
+                await manager.cancel_existing_orders(ticker, from_entered_datetime, to_entered_datetime)
 
             if trade_state in {TradeState.PENDING, TradeState.IN_POSITION}:
-                streamers_tickers, options, total_shares = await get_account_positions(ticker, config["SCHWAB_ACCOUNT_HASH"])
-                await handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config, r, q)
+                streamers_tickers, options, total_shares = await manager.get_account_positions(ticker)
+                await manager.handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config, r, q)
 
-            quote_data, S = await get_option_chain_data(ticker, option_date, option_type)
+            quote_data, S = await manager.get_option_chain_data(ticker, option_date, option_type)
 
             sorted_data = dict(sorted(quote_data.items()))
             filtered_strikes = filter_strikes(np.array(list(sorted_data.keys())), S, num_stdev=1.25)
