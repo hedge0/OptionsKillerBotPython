@@ -1,204 +1,208 @@
 import httpx
 from schwab.auth import easy_client
 
-client = None
+class SchwabClientManager:
+    def __init__(self, config):
+        """
+        Initialize SchwabClientManager and set up client.
 
-async def authenticate_schwab_client(config):
-    """
-    Authenticate the user using the Schwab client.
+        Args:
+            config (dict): Configuration settings containing API credentials.
+        """
+        self.config = config
+        self.client = None
 
-    Args:
-        config (dict): Configuration settings containing API credentials.
+    async def authenticate_schwab_client(self):
+        """
+        Authenticate the user using the Schwab client.
 
-    Returns:
-        None
-    """
-    global client
-    try:
-        client = easy_client(
-            token_path='token.json',
-            api_key=config["SCHWAB_API_KEY"],
-            app_secret=config["SCHWAB_SECRET"],
-            callback_url=config["SCHWAB_CALLBACK_URL"],
-            asyncio=True
-        )
-        print("Login successful.\n")
-    except Exception as e:
-        print(f"Login Failed: An error occurred: {str(e)}")
-        client = None
+        Returns:
+            None
+        """
+        try:
+            self.client = easy_client(
+                token_path='token.json',
+                api_key=self.config["SCHWAB_API_KEY"],
+                app_secret=self.config["SCHWAB_SECRET"],
+                callback_url=self.config["SCHWAB_CALLBACK_URL"],
+                asyncio=True
+            )
+            print("Login successful.\n")
+        except Exception as e:
+            print(f"Login Failed: An error occurred: {str(e)}")
+            self.client = None
 
-async def fetch_account_numbers():
-    """
-    Fetch account numbers from the authenticated Schwab client.
+    async def fetch_account_numbers(self):
+        """
+        Fetch account numbers from the authenticated Schwab client.
 
-    Returns:
-        dict: Account ID data or None if retrieval fails.
-    """
-    try:
-        resp = await client.get_account_numbers()
-        assert resp.status_code == httpx.codes.OK
-        return resp.json()
-    except Exception as e:
-        print(f"Failed to fetch account numbers: {str(e)}")
-        return None
+        Returns:
+            dict: Account ID data or None if retrieval fails.
+        """
+        try:
+            resp = await self.client.get_account_numbers()
+            assert resp.status_code == httpx.codes.OK
+            return resp.json()
+        except Exception as e:
+            print(f"Failed to fetch account numbers: {str(e)}")
+            return None
 
-async def fetch_option_expiration_chain(ticker):
-    """
-    Fetch the option expiration chain for a given ticker.
+    async def fetch_option_expiration_chain(self, ticker):
+        """
+        Fetch the option expiration chain for a given ticker.
 
-    Args:
-        ticker (str): The ticker symbol of the underlying security.
+        Args:
+            ticker (str): The ticker symbol of the underlying security.
 
-    Returns:
-        dict: The expiration chain if successful, None otherwise.
-    """
-    try:
-        resp = await client.get_option_expiration_chain(ticker)
-        assert resp.status_code == httpx.codes.OK
-        return resp.json()
-    except Exception as e:
-        print(f"Failed to fetch expiration chain: {str(e)}")
-        return None
-    
-async def fetch_quote(ticker):
-    """
-    Fetch the quote for the specified ticker.
+        Returns:
+            dict: The expiration chain if successful, None otherwise.
+        """
+        try:
+            resp = await self.client.get_option_expiration_chain(ticker)
+            assert resp.status_code == httpx.codes.OK
+            return resp.json()
+        except Exception as e:
+            print(f"Failed to fetch expiration chain: {str(e)}")
+            return None
 
-    Args:
-        ticker (str): The ticker symbol of the underlying security.
+    async def fetch_quote(self, ticker):
+        """
+        Fetch the quote for the specified ticker.
 
-    Returns:
-        dict: The quote data if successful, None otherwise.
-    """
-    try:
-        resp = await client.get_quote(ticker)
-        assert resp.status_code == httpx.codes.OK
-        return resp.json()
-    except Exception as e:
-        print(f"Failed to fetch quote: {str(e)}")
-        return None
+        Args:
+            ticker (str): The ticker symbol of the underlying security.
 
-async def fetch_quotes(streamers_tickers):
-    """
-    Fetch the quotes for the specified tickers.
+        Returns:
+            dict: The quote data if successful, None otherwise.
+        """
+        try:
+            resp = await self.client.get_quote(ticker)
+            assert resp.status_code == httpx.codes.OK
+            return resp.json()
+        except Exception as e:
+            print(f"Failed to fetch quote: {str(e)}")
+            return None
 
-    Args:
-        streamers_tickers (list): A list of option ticker symbols.
+    async def fetch_quotes(self, streamers_tickers):
+        """
+        Fetch the quotes for the specified tickers.
 
-    Returns:
-        dict: The quote data if successful, None otherwise.
-    """
-    try:
-        resp = await client.get_quotes(streamers_tickers)
-        assert resp.status_code == httpx.codes.OK
-        return resp.json()
-    except Exception as e:
-        print(f"Failed to fetch quotes: {str(e)}")
-        return None
+        Args:
+            streamers_tickers (list): A list of option ticker symbols.
 
-async def fetch_orders_for_account(account_hash, from_date, to_date):
-    """
-    Fetch orders for a given account within a specified date range.
+        Returns:
+            dict: The quote data if successful, None otherwise.
+        """
+        try:
+            resp = await self.client.get_quotes(streamers_tickers)
+            assert resp.status_code == httpx.codes.OK
+            return resp.json()
+        except Exception as e:
+            print(f"Failed to fetch quotes: {str(e)}")
+            return None
 
-    Args:
-        account_hash (str): The account identifier for order management.
-        from_date (datetime): The start date for filtering orders.
-        to_date (datetime): The end date for filtering orders.
+    async def fetch_orders_for_account(self, account_hash, from_date, to_date):
+        """
+        Fetch orders for a given account within a specified date range.
 
-    Returns:
-        list: A list of orders, or None if an error occurs.
-    """
-    try:
-        resp = await client.get_orders_for_account(
-            account_hash, 
-            from_entered_datetime=from_date, 
-            to_entered_datetime=to_date, 
-            status=client.Order.Status.WORKING
-        )
-        assert resp.status_code == httpx.codes.OK
-        return resp.json()
-    except Exception as e:
-        print(f"Error fetching account orders: {str(e)}")
-        return None
+        Args:
+            account_hash (str): The account identifier for order management.
+            from_date (datetime): The start date for filtering orders.
+            to_date (datetime): The end date for filtering orders.
 
-async def fetch_account_data(account_hash):
-    """
-    Fetch the account data for the specified account.
+        Returns:
+            list: A list of orders, or None if an error occurs.
+        """
+        try:
+            resp = await self.client.get_orders_for_account(
+                account_hash, 
+                from_entered_datetime=from_date, 
+                to_entered_datetime=to_date, 
+                status=self.client.Order.Status.WORKING
+            )
+            assert resp.status_code == httpx.codes.OK
+            return resp.json()
+        except Exception as e:
+            print(f"Error fetching account orders: {str(e)}")
+            return None
 
-    Args:
-        account_hash (str): The account identifier.
+    async def fetch_account_data(self, account_hash):
+        """
+        Fetch the account data for the specified account.
 
-    Returns:
-        dict: The account data if successful, None otherwise.
-    """
-    try:
-        resp = await client.get_account(account_hash, fields=[client.Account.Fields.POSITIONS])
-        assert resp.status_code == httpx.codes.OK
-        return resp.json()
-    except Exception as e:
-        print(f"Error fetching account data: {str(e)}")
-        return None
+        Args:
+            account_hash (str): The account identifier.
 
-async def fetch_option_chain(ticker, option_date, option_type):
-    """
-    Fetch the option chain for a given ticker and date.
+        Returns:
+            dict: The account data if successful, None otherwise.
+        """
+        try:
+            resp = await self.client.get_account(account_hash, fields=[self.client.Account.Fields.POSITIONS])
+            assert resp.status_code == httpx.codes.OK
+            return resp.json()
+        except Exception as e:
+            print(f"Error fetching account data: {str(e)}")
+            return None
 
-    Args:
-        ticker (str): The ticker symbol of the underlying security.
-        option_date (datetime.date): The option expiration date.
-        option_type (str): The contract type, 'calls' for CALL or 'puts' for PUT.
+    async def fetch_option_chain(self, ticker, option_date, option_type):
+        """
+        Fetch the option chain for a given ticker and date.
 
-    Returns:
-        dict: The option chain data if successful, None otherwise.
-    """
-    try:
-        respChain = await client.get_option_chain(
-            ticker, 
-            from_date=option_date, 
-            to_date=option_date, 
-            contract_type=client.Options.ContractType.CALL if option_type == "calls" else client.Options.ContractType.PUT
-        )
-        assert respChain.status_code == httpx.codes.OK
-        return respChain.json()
-    except Exception as e:
-        print(f"Failed to fetch option chain: {str(e)}")
-        return None
-    
-async def place_order(account_hash, order):
-    """
-    Place an order with the given account hash.
+        Args:
+            ticker (str): The ticker symbol of the underlying security.
+            option_date (datetime.date): The option expiration date.
+            option_type (str): The contract type, 'calls' for CALL or 'puts' for PUT.
 
-    Args:
-        account_hash (str): The account identifier.
-        order (object): The order object to place.
+        Returns:
+            dict: The option chain data if successful, None otherwise.
+        """
+        try:
+            respChain = await self.client.get_option_chain(
+                ticker, 
+                from_date=option_date, 
+                to_date=option_date, 
+                contract_type=self.client.Options.ContractType.CALL if option_type == "calls" else self.client.Options.ContractType.PUT
+            )
+            assert respChain.status_code == httpx.codes.OK
+            return respChain.json()
+        except Exception as e:
+            print(f"Failed to fetch option chain: {str(e)}")
+            return None
 
-    Returns:
-        bool: True if the order was successful, False otherwise.
-    """
-    try:
-        resp = await client.place_order(account_hash, order)
-        assert resp.status_code == httpx.codes.OK
-        return True
-    except Exception as e:
-        print(f"Failed to place order: {e}")
-        return False
+    async def place_order(self, account_hash, order):
+        """
+        Place an order with the given account hash.
 
-async def cancel_order(order_id, account_hash):
-    """
-    Cancel an existing order for a given account.
+        Args:
+            account_hash (str): The account identifier.
+            order (object): The order object to place.
 
-    Args:
-        order_id (str): The order ID to cancel.
-        account_hash (str): The account identifier for order management.
+        Returns:
+            bool: True if the order was successful, False otherwise.
+        """
+        try:
+            resp = await self.client.place_order(account_hash, order)
+            assert resp.status_code == httpx.codes.OK
+            return True
+        except Exception as e:
+            print(f"Failed to place order: {e}")
+            return False
 
-    Returns:
-        bool: True if the order was successfully canceled, False otherwise.
-    """
-    try:
-        resp = await client.cancel_order(order_id, account_hash)
-        assert resp.status_code == httpx.codes.OK
-        return True
-    except Exception as e:
-        print(f"Error cancelling order {order_id}: {str(e)}")
-        return False
-    
+    async def cancel_order(self, order_id, account_hash):
+        """
+        Cancel an existing order for a given account.
+
+        Args:
+            order_id (str): The order ID to cancel.
+            account_hash (str): The account identifier for order management.
+
+        Returns:
+            bool: True if the order was successfully canceled, False otherwise.
+        """
+        try:
+            resp = await self.client.cancel_order(order_id, account_hash)
+            assert resp.status_code == httpx.codes.OK
+            return True
+        except Exception as e:
+            print(f"Error cancelling order {order_id}: {str(e)}")
+            return False
