@@ -1,42 +1,11 @@
-import os
 import csv
 import numpy as np
 from datetime import datetime, time
-from dotenv import load_dotenv
-from fredapi import Fred
 
 from src.interpolations import rfv_model
 from src.models import barone_adesi_whaley_american_option_price, calculate_delta, calculate_implied_volatility_baw
 
-load_dotenv()
 
-def load_config():
-    """
-    Load configuration from environment variables and validate them.
-    
-    Raises:
-        ValueError: If any required environment variable is not set.
-    """
-    config = {
-        "SCHWAB_API_KEY": os.getenv('SCHWAB_API_KEY'),
-        "SCHWAB_SECRET": os.getenv('SCHWAB_SECRET'),
-        "SCHWAB_CALLBACK_URL": os.getenv('SCHWAB_CALLBACK_URL'),
-        "SCHWAB_ACCOUNT_HASH": os.getenv('SCHWAB_ACCOUNT_HASH'),
-        "FRED_API_KEY": os.getenv('FRED_API_KEY'),
-        "DRY_RUN": os.getenv('DRY_RUN', 'True').lower() in ['true', '1', 'yes'],
-        "TICKER": os.getenv('TICKER'),
-        "DATE_INDEX": int(os.getenv('DATE_INDEX', 0)),
-        "OPTION_TYPE": os.getenv('OPTION_TYPE'),
-        "TIME_TO_REST": int(os.getenv('TIME_TO_REST', 1)),
-        "MIN_OI": float(os.getenv('MIN_OI', 0.0)),
-        "MIN_UNDERPRICED": float(os.getenv('MIN_UNDERPRICED', 0.50))
-    }
-
-    for key, value in config.items():
-        if value is None:
-            raise ValueError(f"{key} environment variable not set")
-    
-    return config
 
 def is_nyse_open():
     """
@@ -72,47 +41,6 @@ def precompile_numba_functions():
     calculate_delta(100.0, 100.0, 0.5, 0.01, 0.2, option_type='calls')
     k = np.array([0.1])
     rfv_model(k, [0.1, 0.2, 0.3, 0.4, 0.5])
-
-def get_risk_free_rate(fred_api_key):
-    """
-    Fetches the risk-free rate (SOFR) using the FRED API.
-
-    Args:
-        fred_api_key (str): The FRED API key.
-
-    Returns:
-        float: The calculated risk-free rate.
-    """
-    try:
-        fred = Fred(api_key=fred_api_key)
-        sofr_data = fred.get_series('SOFR')
-        risk_free_rate = (sofr_data.iloc[-1] / 100)
-        return risk_free_rate
-    except Exception as e:
-        print(f"FRED API Error: Invalid FRED API Key or failed to fetch SOFR data: {str(e)}")
-        return None
-
-def filter_strikes(x, S, num_stdev=1.25, two_sigma_move=False):
-    """
-    Filter strike prices around the underlying asset's price.
-
-    Args:
-        x (array-like): Array of strike prices.
-        S (float): Current underlying price.
-        num_stdev (float, optional): Number of standard deviations for filtering. Defaults to 1.25.
-        two_sigma_move (bool, optional): Adjust upper bound for a 2-sigma move. Defaults to False.
-
-    Returns:
-        array-like: Filtered array of strike prices within the specified range.
-    """
-    stdev = np.std(x)
-    lower_bound = S - num_stdev * stdev
-    upper_bound = S + num_stdev * stdev
-
-    if two_sigma_move:
-        upper_bound = S + 2 * stdev
-
-    return x[(x >= lower_bound) & (x <= upper_bound)]
 
 def write_csv(filename, x_vals, y_vals):
     """
