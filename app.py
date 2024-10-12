@@ -67,7 +67,7 @@ async def main():
 
             if trade_state in {TradeState.PENDING, TradeState.IN_POSITION}:
                 streamers_tickers, options, total_shares = await manager.get_account_positions(ticker)
-                await manager.handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, config, r, q)
+                await manager.handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, r, q)
 
             quote_data, S = await manager.get_option_chain_data(ticker, option_date, option_type)
 
