@@ -17,12 +17,7 @@ def load_env_file():
         "SCHWAB_ACCOUNT_HASH": os.getenv('SCHWAB_ACCOUNT_HASH'),
         "FRED_API_KEY": os.getenv('FRED_API_KEY'),
         "DRY_RUN": os.getenv('DRY_RUN', 'True').lower() in ['true', '1', 'yes'],
-        "TICKER": os.getenv('TICKER'),
-        "DATE_INDEX": int(os.getenv('DATE_INDEX', 0)),
-        "OPTION_TYPE": os.getenv('OPTION_TYPE'),
         "TIME_TO_REST": int(os.getenv('TIME_TO_REST', 1)),
-        "MIN_OI": float(os.getenv('MIN_OI', 0.0)),
-        "MIN_UNDERPRICED": float(os.getenv('MIN_UNDERPRICED', 0.50))
     }
 
     for key, value in config.items():
