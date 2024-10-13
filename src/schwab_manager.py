@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import date, datetime
-from schwab.orders.equities import equity_buy_market, equity_sell_short_market, equity_sell_market, equity_buy_to_cover_market
+import math
+from schwab.orders.equities import equity_buy_market, equity_sell_short_market, equity_sell_market, equity_buy_to_cover_market, equity_sell_short_limit
 from schwab.orders.options import OptionSymbol
 
 from src.models import calculate_delta, calculate_implied_volatility_baw
@@ -319,8 +320,15 @@ class SchwabManager:
         Returns:
             None
         """
+        mid_price_ceiled = math.floor(float(mid_price) * 100) / 100
         contract_type = 'C' if option_type == 'calls' else 'P'
         symbol = OptionSymbol(
             ticker, option_date, contract_type, str(strike)).build()
 
-        print(f"Strike with highest oi * mispricing: {strike}, Mid Price: {mid_price}, Symbol: {symbol}")
+        print(f"Strike with highest oi * mispricing: {strike}, Mid Price: {mid_price_ceiled}, Symbol: {symbol}")
+
+        if not self.config["DRY_RUN"]:
+            order = equity_sell_short_limit(symbol, int(1), mid_price_ceiled).build()
+
+            print(f"Placing order to SELL {symbol} at {mid_price_ceiled}")
+            await self.client_manager.place_order(self.config["SCHWAB_ACCOUNT_HASH"], order)
