@@ -1,5 +1,5 @@
 import numpy as np
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 from src.interpolations import rfv_model
 from src.models import barone_adesi_whaley_american_option_price, calculate_delta, calculate_implied_volatility_baw
@@ -25,6 +25,35 @@ def is_nyse_open():
     current_time = now.time()
 
     return open_time <= current_time < close_time
+
+def should_wait_for_market_open():
+    """
+    Check if the current time is before the market opens on a weekday.
+
+    This function determines if the current time is before 9:30 AM on a weekday 
+    (Monday to Friday). If true, it indicates that the code should wait until the market opens.
+
+    Returns:
+        bool: True if the current time is before 9:30 AM on a weekday, False otherwise.
+    """
+    now = datetime.now()
+    if now.weekday() < 5 and now.time() < time(9, 30):
+        return True
+    return False
+
+def calculate_time_to_wait_for_market_open():
+    """
+    Calculate the time to wait until the market opens at 9:30 AM on the current day.
+
+    This function computes the time difference between the current time and 9:30 AM 
+    on the current day, then adds an additional 15 seconds to the wait time.
+
+    Returns:
+        timedelta: The time duration to wait until market opens, plus 15 seconds.
+    """
+    market_open_time = datetime.combine(datetime.now().date(), time(9, 30))
+    time_to_wait = (market_open_time - datetime.now()) + timedelta(seconds=15)
+    return time_to_wait
 
 def precompile_numba_functions():
     """

@@ -12,7 +12,7 @@ from src.filters import filter_by_bid_price, filter_by_mid_iv, filter_strikes
 from src.load_env import load_env_file
 from src.fred import fetch_risk_free_rate
 from src.schwab_manager import SchwabManager
-from src.helpers import is_nyse_open, precompile_numba_functions
+from src.helpers import calculate_time_to_wait_for_market_open, is_nyse_open, precompile_numba_functions, should_wait_for_market_open
 from src.models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
 from src.interpolations import fit_model, rbf_model, rfv_model
 
@@ -196,8 +196,13 @@ async def main():
 
             current_node.set_trade_state(trade_state)
             current_node = current_node.next
+        elif should_wait_for_market_open():
+            time_to_wait = calculate_time_to_wait_for_market_open()
+
+            print(f"NYSE is closed. Waiting for {time_to_wait.total_seconds()} seconds until market opens.")
+            await asyncio.sleep(time_to_wait.total_seconds())
         else:
-            print("NYSE is currently closed.")
+            print("NYSE is closed now.")
             break
 
         await asyncio.sleep(config["TIME_TO_REST"])
