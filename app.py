@@ -8,11 +8,11 @@ nest_asyncio.apply()
 
 from src.trade_state import TradeState 
 from src.load_json import load_json_file
-from src.filters import filter_strikes
+from src.filters import filter_by_bid_price, filter_by_mid_iv, filter_strikes
 from src.load_env import load_env_file
 from src.fred import fetch_risk_free_rate
 from src.schwab_manager import SchwabManager
-from src.helpers import is_nyse_open, precompile_numba_functions, write_csv
+from src.helpers import is_nyse_open, precompile_numba_functions
 from src.models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
 from src.interpolations import fit_model, rbf_model, rfv_model
 
@@ -48,29 +48,33 @@ async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_st
 
     if trade_state in {TradeState.PENDING, TradeState.IN_POSITION}:
         streamers_tickers, options, total_shares = await manager.get_account_positions(ticker)
+
+        if trade_state == TradeState.PENDING:
+            trade_state = TradeState.IN_POSITION if len(streamers_tickers) > 0 else TradeState.NOT_IN_POSITION
+ 
         await manager.handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, r, q)
 
     quote_data, S = await manager.get_option_chain_data(ticker, option_date, option_type)
 
     sorted_data = dict(sorted(quote_data.items()))
     filtered_strikes = filter_strikes(np.array(list(sorted_data.keys())), S, num_stdev=1.25)
-    sorted_data = {strike: prices for strike, prices in sorted_data.items() if strike in filtered_strikes and prices['bid'] != 0.0}
+    sorted_data = filter_by_bid_price(sorted_data, filtered_strikes)
 
     current_time = datetime.now()
     T = (expiration_time - current_time).total_seconds() / (365 * 24 * 3600)
 
-    for strike, prices in sorted_data.items():
-        sorted_data[strike] = {
+    for K, prices in sorted_data.items():
+        sorted_data[K] = {
             "bid": prices["bid"],
             "ask": prices["ask"],
             "mid": prices["mid"],
             "open_interest": prices["open_interest"],
-            "mid_IV": calculate_implied_volatility_baw(prices["mid"], S, strike, r, T, q=q, option_type=option_type),
-            "ask_IV": calculate_implied_volatility_baw(prices["ask"], S, strike, r, T, q=q, option_type=option_type),
-            "bid_IV": calculate_implied_volatility_baw(prices["bid"], S, strike, r, T, q=q, option_type=option_type)
+            "mid_IV": calculate_implied_volatility_baw(prices["mid"], S, K, r, T, q=q, option_type=option_type),
+            "ask_IV": calculate_implied_volatility_baw(prices["ask"], S, K, r, T, q=q, option_type=option_type),
+            "bid_IV": calculate_implied_volatility_baw(prices["bid"], S, K, r, T, q=q, option_type=option_type)
         }
 
-    sorted_data = {strike: prices for strike, prices in sorted_data.items() if prices['mid_IV'] > 0.005}
+    sorted_data = filter_by_mid_iv(sorted_data)
 
     x = np.array(list(sorted_data.keys())) 
     y_bid_iv = np.array([prices['bid_IV'] for prices in sorted_data.values()])
@@ -120,15 +124,24 @@ async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_st
                 y_mid = y_mid[mask]
                 mispricings = mispricings[mask]
 
-            # Write mispricing information to the log file if the absolute value is greater than min_mispricing
+            max_oi_mispricing = float('-inf')
+            best_strike = None
+            best_mid_price = None
+
             for i in range(len(x)):
                 if mispricings[i] > min_overpriced:
-                    print(f"Strike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}\n")
+                    print(f"Strike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}, Open Interest: {open_interest[i]}\n")
 
-            # Optionally, write data to CSV files
-            #write_csv("original_strikes_mid_iv.csv", x, y_mid_iv)
-            #write_csv("interpolated_strikes_iv.csv", fine_x, interpolated_y)
-            #print("Data written to CSV files successfully.")
+                    oi_mispricing = open_interest[i] * mispricings[i]
+                    if oi_mispricing > max_oi_mispricing:
+                        max_oi_mispricing = oi_mispricing
+                        best_strike = x[i]
+                        best_mid_price = y_mid[i]
+
+            if best_strike is not None:
+                best_tuple = (best_strike, best_mid_price)
+                print(f"Strike with highest oi * mispricing: {best_tuple[0]}, Mid Price: {best_tuple[1]}")
+
     return trade_state
 
 async def main():
