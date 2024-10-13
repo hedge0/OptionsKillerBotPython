@@ -7,6 +7,7 @@ import nest_asyncio
 
 nest_asyncio.apply()
 
+from src.trade_state import TradeState 
 from src.load_json import load_json_file
 from src.filters import filter_strikes
 from src.load_env import load_env_file
@@ -16,27 +17,19 @@ from src.helpers import is_nyse_open, precompile_numba_functions, write_csv
 from src.models import barone_adesi_whaley_american_option_price, calculate_implied_volatility_baw
 from src.interpolations import fit_model, rbf_model, rfv_model
 
-class TradeState(Enum):
-    NOT_IN_POSITION = "not in position"
-    PENDING = "pending"
-    IN_POSITION = "in position"
-
-# Constants and Global Variables
 precompile_numba_functions()
 
-trade_state = TradeState.NOT_IN_POSITION
-
+# Constants and Global Variables
 config = load_env_file()
+stocks_list = load_json_file("stocks.json")
 manager = SchwabManager(config)
 r = fetch_risk_free_rate(config["FRED_API_KEY"])
 
-async def handle_trades(ticker, option_date, option_type, expiration_time, q, min_mispricing, from_entered_datetime, to_entered_datetime):
+async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_state, option_date, expiration_time, from_entered_datetime, to_entered_datetime):
     """
     Function to handle the trade logic inside the main loop.
     This function is called inside the main while loop.
     """
-    global manager, config, trade_state
-
     if config["DRY_RUN"] != True:
         await manager.cancel_existing_orders(ticker, from_entered_datetime, to_entered_datetime)
 
@@ -103,66 +96,82 @@ async def handle_trades(ticker, option_date, option_type, expiration_time, q, mi
 
             mispricings[i] = diff_price
 
-        if config["MIN_OI"] > 0.0:
-            mask = open_interest > config["MIN_OI"]
-            x = x[mask]
-            y_bid_iv = y_bid_iv[mask]
-            y_ask_iv = y_ask_iv[mask]
-            y_mid_iv = y_mid_iv[mask]
-            open_interest = open_interest[mask]
-            y_mid = y_mid[mask]
-            mispricings = mispricings[mask]
+        if trade_state in {TradeState.NOT_IN_POSITION}:
+            if min_oi > 0.0:
+                mask = open_interest > min_oi
+                x = x[mask]
+                y_bid_iv = y_bid_iv[mask]
+                y_ask_iv = y_ask_iv[mask]
+                y_mid_iv = y_mid_iv[mask]
+                open_interest = open_interest[mask]
+                y_mid = y_mid[mask]
+                mispricings = mispricings[mask]
 
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # Write mispricing information to the log file if the absolute value is greater than min_mispricing
+            for i in range(len(x)):
+                if mispricings[i] > min_overpriced:
+                    print(f"Strike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}\n")
 
-        # Write mispricing information to the log file if the absolute value is greater than min_mispricing
-        for i in range(len(x)):
-            if abs(mispricings[i]) > min_mispricing:
-                print(f"{timestamp}\tStrike: {x[i]}, Mid Price: {y_mid[i]}, Mispricing: {mispricings[i]}\n")
-
-        # Optionally, write data to CSV files
-        #write_csv("original_strikes_mid_iv.csv", x, y_mid_iv)
-        #write_csv("interpolated_strikes_iv.csv", fine_x, interpolated_y)
-        #print("Data written to CSV files successfully.")
+            # Optionally, write data to CSV files
+            #write_csv("original_strikes_mid_iv.csv", x, y_mid_iv)
+            #write_csv("interpolated_strikes_iv.csv", fine_x, interpolated_y)
+            #print("Data written to CSV files successfully.")
+    return trade_state
 
 async def main():
     """
     Main function to initialize the bot.
     """
-    global trade_state
-
-    stocks_list = load_json_file("stocks.json")
-
-    print(stocks_list)
-
     await manager.initialize()
 
-    ticker = config["TICKER"]
-    option_type = config["OPTION_TYPE"]
-    min_mispricing = config["MIN_UNDERPRICED"]
+    if stocks_list.head is not None:
+        current_node = stocks_list.head
+        while True:
+            ticker = current_node.ticker
+            date_index = current_node.date_index
 
-    q = await manager.get_dividend_yield(ticker)
-    if q is None:
-        return
-    
-    date = await manager.get_option_expiration_date(ticker, config["DATE_INDEX"])
-    if date is None:
-        return
+            q = await manager.get_dividend_yield(ticker)
+            current_node.set_q(q)
 
-    option_date = datetime.strptime(date, "%Y-%m-%d").date()
-    expiration_time =datetime.combine(datetime.strptime(date, '%Y-%m-%d'), datetime.min.time()) + timedelta(hours=16)
+            date = await manager.get_option_expiration_date(ticker, date_index)
+            option_date = datetime.strptime(date, "%Y-%m-%d").date()
+            expiration_time = datetime.combine(datetime.strptime(date, '%Y-%m-%d'), datetime.min.time()) + timedelta(hours=16)
 
-    current_date = datetime.now().date()
-    from_entered_datetime = datetime.combine(current_date, datetime.min.time()).replace(
-        tzinfo=timezone(timedelta(hours=-5))
-    )
-    to_entered_datetime = datetime.combine(current_date, datetime.max.time()).replace(
-        tzinfo=timezone(timedelta(hours=-5))
-    )
+            current_node.set_option_date(option_date)
+            current_node.set_expiration_time(expiration_time)
+
+            current_date = datetime.now().date()
+            from_entered_datetime = datetime.combine(current_date, datetime.min.time()).replace(
+                tzinfo=timezone(timedelta(hours=-5))
+            )
+            to_entered_datetime = datetime.combine(current_date, datetime.max.time()).replace(
+                tzinfo=timezone(timedelta(hours=-5))
+            )
+
+            current_node.set_from_entered_datetime(from_entered_datetime)
+            current_node.set_to_entered_datetime(to_entered_datetime)
+
+            current_node = current_node.next
+            if current_node == stocks_list.head:
+                break
 
     while True:
         if (is_nyse_open() or config["DRY_RUN"]):
-            await handle_trades(ticker, option_date, option_type, expiration_time, q, min_mispricing, from_entered_datetime, to_entered_datetime)
+            trade_state = await handle_trades(
+                current_node.ticker,
+                current_node.option_type,
+                current_node.q,
+                current_node.min_overpriced,
+                current_node.min_oi,
+                current_node.trade_state,
+                current_node.option_date,
+                current_node.expiration_time,
+                current_node.from_entered_datetime,
+                current_node.to_entered_datetime
+            )
+
+            current_node.set_trade_state(trade_state)
+            current_node = current_node.next
         else:
             print("NYSE is currently closed.")
             break

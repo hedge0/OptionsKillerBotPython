@@ -2,6 +2,27 @@ import httpx
 from schwab.auth import easy_client
 
 class ClientManager:
+    """
+    Manages the authentication and interaction with the Schwab API. Handles operations such as fetching account data, 
+    quotes, orders, option chains, and placing/canceling orders.
+
+    Attributes:
+        config (dict): Configuration settings containing API credentials and other relevant parameters.
+        client (object): The authenticated client object used to interact with the Schwab API.
+
+    Methods:
+        authenticate_schwab_client(): Authenticates the Schwab client.
+        fetch_account_numbers(): Fetches the account numbers associated with the authenticated client.
+        fetch_option_expiration_chain(ticker): Fetches the option expiration chain for the given ticker.
+        fetch_quote(ticker): Fetches a quote for a specific ticker.
+        fetch_quotes(streamers_tickers): Fetches quotes for a list of option tickers.
+        fetch_orders_for_account(account_hash, from_date, to_date): Fetches orders for the specified account within the date range.
+        fetch_account_data(account_hash): Fetches the account data, including positions, for a specified account.
+        fetch_option_chain(ticker, option_date, option_type): Fetches the option chain for the specified ticker, date, and option type.
+        place_order(account_hash, order): Places an order for the specified account.
+        cancel_order(order_id, account_hash): Cancels an order with the given order ID for the specified account.
+    """
+
     def __init__(self, config):
         """
         Initialize SchwabClientManager and set up client.

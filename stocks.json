@@ -1,10 +1,9 @@
 [
     {
-        "ticker": "meta",
+        "ticker": "META",
         "date_index": 0,
         "option_type": "calls",
-        "min_overpriced": 0.25,
-        "min_underpriced": 0.05,
+        "min_overpriced": 0.22,
         "min_oi": 100.0
     }
 ]

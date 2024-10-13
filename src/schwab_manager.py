@@ -6,6 +6,27 @@ from src.models import calculate_delta, calculate_implied_volatility_baw
 from src.client_manager import ClientManager
 
 class SchwabManager:
+    """
+    A manager class that handles various operations with the Schwab API, such as fetching account positions, 
+    handling delta adjustments, placing orders, fetching options chain data, and more.
+
+    Attributes:
+        config (dict): Configuration settings for Schwab API, including account hash and other parameters.
+        client_manager (ClientManager): Manages authentication and communication with the Schwab API.
+
+    Methods:
+        initialize(): Authenticates the Schwab client and fetches account numbers.
+        get_option_expiration_date(ticker, date_index): Fetches the option expiration date for a given ticker and index.
+        get_dividend_yield(ticker): Fetches and parses the dividend yield for a given ticker.
+        cancel_existing_orders(ticker, from_date, to_date): Cancels existing orders for a specified ticker within a date range.
+        get_account_positions(ticker): Fetches the account positions for a specified ticker.
+        fetch_streamer_quotes_and_calculate_deltas(ticker, streamers_tickers, expiration_time, options, total_shares, r, q): 
+            Fetches streamer quotes and calculates delta values for options on the specified ticker.
+        adjust_delta_imbalance(ticker, delta_imbalance, is_closing_position=False): Adjusts the delta imbalance by placing appropriate market orders to hedge or close the position.
+        handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, r, q): Handles delta calculations and adjusts delta imbalance for the given ticker.
+        get_option_chain_data(ticker, option_date, option_type): Fetches the option chain data for the specified ticker and expiration date.
+    """
+
     def __init__(self, config):
         """
         Initialize the SchwabManager and set up the client manager.
