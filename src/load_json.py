@@ -105,7 +105,6 @@ class StockNode:
         """
         self.to_entered_datetime = to_entered_datetime_value
 
-
 class CircularLinkedList:
     """
     Circular linked list to store stock nodes.
@@ -135,7 +134,6 @@ class CircularLinkedList:
                 current = current.next
             current.next = new_node
             new_node.next = self.head
-
 
 def load_json_file(filename):
     """
