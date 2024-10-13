@@ -137,9 +137,7 @@ async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_st
                         best_mid_price = y_mid[i]
 
             if best_strike is not None:
-                best_tuple = (best_strike, best_mid_price)
-                print(f"Strike with highest oi * mispricing: {best_tuple[0]}, Mid Price: {best_tuple[1]}")
-
+                await manager.order_option(ticker, option_type, option_date, best_strike, best_mid_price)
     return trade_state
 
 async def main():
