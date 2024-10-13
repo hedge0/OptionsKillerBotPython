@@ -1,4 +1,3 @@
-import csv
 import numpy as np
 from datetime import datetime, time
 
@@ -39,20 +38,3 @@ def precompile_numba_functions():
     calculate_delta(100.0, 100.0, 0.5, 0.01, 0.2, option_type='calls')
     k = np.array([0.1])
     rfv_model(k, [0.1, 0.2, 0.3, 0.4, 0.5])
-
-def write_csv(filename, x_vals, y_vals):
-    """
-    Write x and y values to a CSV file.
-    
-    Args:
-        filename (str): The name of the CSV file.
-        x_vals (np.array): Array of x values (strikes).
-        y_vals (np.array): Array of y values (implied volatilities).
-    """
-    with open(filename, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(["Strike", "IV"])
-        for x, y in zip(x_vals, y_vals):
-            writer.writerow([x, y])
-
-    print(f"Data written to {filename}")
