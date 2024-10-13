@@ -1,6 +1,7 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
 from schwab.orders.equities import equity_buy_market, equity_sell_short_market, equity_sell_market, equity_buy_to_cover_market
+from schwab.orders.options import OptionSymbol
 
 from src.models import calculate_delta, calculate_implied_volatility_baw
 from src.client_manager import ClientManager
@@ -308,3 +309,18 @@ class SchwabManager:
                 }
 
         return quote_data, S
+
+    async def order_option(self, ticker, option_type, option_date, strike, mid_price):
+        """
+        A barebone function to be expanded in the future.
+
+        Args:
+
+        Returns:
+            None
+        """
+        contract_type = 'C' if option_type == 'calls' else 'P'
+        symbol = OptionSymbol(
+            ticker, option_date, contract_type, str(strike)).build()
+
+        print(f"Strike with highest oi * mispricing: {strike}, Mid Price: {mid_price}, Symbol: {symbol}")
