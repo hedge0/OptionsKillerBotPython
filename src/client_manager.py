@@ -1,3 +1,4 @@
+import logging
 import httpx
 from schwab.auth import easy_client
 
@@ -48,9 +49,9 @@ class ClientManager:
                 callback_url=self.config["SCHWAB_CALLBACK_URL"],
                 asyncio=True
             )
-            print("Login successful.\n")
+            logging.getLogger().custom("Login successful.")
         except Exception as e:
-            print(f"Login Failed: An error occurred: {str(e)}")
+            logging.error(f"Login Failed: An error occurred: {str(e)}")
             self.client = None
 
     async def fetch_account_numbers(self):
@@ -65,7 +66,7 @@ class ClientManager:
             assert resp.status_code == httpx.codes.OK
             return resp.json()
         except Exception as e:
-            print(f"Failed to fetch account numbers: {str(e)}")
+            logging.error(f"Failed to fetch account numbers: {str(e)}")
             return None
 
     async def fetch_option_expiration_chain(self, ticker):
@@ -83,7 +84,7 @@ class ClientManager:
             assert resp.status_code == httpx.codes.OK
             return resp.json()
         except Exception as e:
-            print(f"Failed to fetch expiration chain: {str(e)}")
+            logging.error(f"Failed to fetch expiration chain: {str(e)}")
             return None
 
     async def fetch_quote(self, ticker):
@@ -101,7 +102,7 @@ class ClientManager:
             assert resp.status_code == httpx.codes.OK
             return resp.json()
         except Exception as e:
-            print(f"Failed to fetch quote: {str(e)}")
+            logging.error(f"Failed to fetch quote: {str(e)}")
             return None
 
     async def fetch_quotes(self, streamers_tickers):
@@ -119,7 +120,7 @@ class ClientManager:
             assert resp.status_code == httpx.codes.OK
             return resp.json()
         except Exception as e:
-            print(f"Failed to fetch quotes: {str(e)}")
+            logging.error(f"Failed to fetch quotes: {str(e)}")
             return None
 
     async def fetch_orders_for_account(self, account_hash, from_date, to_date):
@@ -144,7 +145,7 @@ class ClientManager:
             assert resp.status_code == httpx.codes.OK
             return resp.json()
         except Exception as e:
-            print(f"Error fetching account orders: {str(e)}")
+            logging.error(f"Error fetching account orders: {str(e)}")
             return None
 
     async def fetch_account_data(self, account_hash):
@@ -162,7 +163,7 @@ class ClientManager:
             assert resp.status_code == httpx.codes.OK
             return resp.json()
         except Exception as e:
-            print(f"Error fetching account data: {str(e)}")
+            logging.error(f"Error fetching account data: {str(e)}")
             return None
 
     async def fetch_option_chain(self, ticker, option_date, option_type):
@@ -187,7 +188,7 @@ class ClientManager:
             assert respChain.status_code == httpx.codes.OK
             return respChain.json()
         except Exception as e:
-            print(f"Failed to fetch option chain: {str(e)}")
+            logging.error(f"Failed to fetch option chain: {str(e)}")
             return None
 
     async def place_order(self, account_hash, order):
@@ -206,7 +207,7 @@ class ClientManager:
             assert resp.status_code == httpx.codes.OK
             return True
         except Exception as e:
-            print(f"Failed to place order: {e}")
+            logging.error(f"Failed to place order: {e}")
             return False
 
     async def cancel_order(self, order_id, account_hash):
@@ -225,5 +226,5 @@ class ClientManager:
             assert resp.status_code == httpx.codes.OK
             return True
         except Exception as e:
-            print(f"Error cancelling order {order_id}: {str(e)}")
+            logging.error(f"Error cancelling order {order_id}: {str(e)}")
             return False
