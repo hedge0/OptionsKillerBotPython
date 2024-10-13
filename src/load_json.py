@@ -1,4 +1,5 @@
 import json
+
 from src.trade_state import TradeState 
 
 class StockNode:

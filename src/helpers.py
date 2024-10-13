@@ -5,8 +5,6 @@ from datetime import datetime, time
 from src.interpolations import rfv_model
 from src.models import barone_adesi_whaley_american_option_price, calculate_delta, calculate_implied_volatility_baw
 
-
-
 def is_nyse_open():
     """
     Check if the New York Stock Exchange (NYSE) is currently open.
