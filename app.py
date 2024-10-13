@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 import numpy as np
-from enum import Enum
 from sklearn.preprocessing import MinMaxScaler
 import asyncio
 import nest_asyncio
@@ -27,8 +26,22 @@ r = fetch_risk_free_rate(config["FRED_API_KEY"])
 
 async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_state, option_date, expiration_time, from_entered_datetime, to_entered_datetime):
     """
-    Function to handle the trade logic inside the main loop.
-    This function is called inside the main while loop.
+    Handles the trade logic for a given ticker and option type.
+
+    Args:
+        ticker (str): Ticker symbol for the asset being traded.
+        option_type (str): Type of option ('call' or 'put').
+        q (float): Dividend yield for the underlying asset.
+        min_overpriced (float): Minimum threshold for mispricing detection.
+        min_oi (float): Minimum open interest to filter options.
+        trade_state (TradeState): Current trade state (e.g., PENDING, IN_POSITION).
+        option_date (datetime): Date of the option to trade.
+        expiration_time (datetime): Time until option expiration.
+        from_entered_datetime (datetime): Starting datetime to filter orders.
+        to_entered_datetime (datetime): Ending datetime to filter orders.
+
+    Returns:
+        TradeState: Updated trade state based on the trade logic.
     """
     if config["DRY_RUN"] != True:
         await manager.cancel_existing_orders(ticker, from_entered_datetime, to_entered_datetime)

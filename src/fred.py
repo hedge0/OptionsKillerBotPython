@@ -18,3 +18,4 @@ def fetch_risk_free_rate(fred_api_key):
     except Exception as e:
         print(f"FRED API Error: Invalid FRED API Key or failed to fetch SOFR data: {str(e)}")
         return None
+    
