@@ -155,6 +155,9 @@ async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_st
             if best_strike is not None:
                 await manager.sell_option(ticker, option_type, option_date, best_strike, best_mid_price)
                 trade_state = TradeState.PENDING
+        else:
+            print()
+            # BOILER PLATE FOR NOW
 
     return trade_state
 
