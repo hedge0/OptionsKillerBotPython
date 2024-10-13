@@ -94,8 +94,6 @@ async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_st
         fine_x_normalized = np.linspace(np.min(x_normalized), np.max(x_normalized), 800)
         rbf_interpolated_y = rbf_interpolator(np.log(fine_x_normalized).reshape(-1, 1))
         rfv_interpolated_y = rfv_model(np.log(fine_x_normalized), rfv_params)
-
-        # Weighted Averaging: RFV 75%, RBF 25%
         interpolated_y = 0.75 * rfv_interpolated_y + 0.25 * rbf_interpolated_y
 
         fine_x = np.linspace(np.min(x), np.max(x), 800)
