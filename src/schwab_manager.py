@@ -311,11 +311,16 @@ class SchwabManager:
 
         return quote_data, S
 
-    async def order_option(self, ticker, option_type, option_date, strike, mid_price):
+    async def sell_option(self, ticker, option_type, option_date, strike, mid_price):
         """
-        A barebone function to be expanded in the future.
+        Places a limit order to sell an option contract.
 
         Args:
+            ticker (str): The ticker symbol of the underlying security.
+            option_type (str): The type of option ('calls' or 'puts').
+            option_date (datetime.date): The expiration date of the option contract.
+            strike (float): The strike price of the option contract.
+            mid_price (float): The calculated mid-price of the option contract.
 
         Returns:
             None
@@ -325,10 +330,8 @@ class SchwabManager:
         symbol = OptionSymbol(
             ticker, option_date, contract_type, str(strike)).build()
 
-        print(f"Strike with highest oi * mispricing: {strike}, Mid Price: {mid_price_ceiled}, Symbol: {symbol}")
-
         if not self.config["DRY_RUN"]:
             order = equity_sell_short_limit(symbol, int(1), mid_price_ceiled).build()
 
-            print(f"Placing order to SELL {symbol} at {mid_price_ceiled}")
+            print(f"Placing order to SELL {symbol} at {mid_price_ceiled}...")
             await self.client_manager.place_order(self.config["SCHWAB_ACCOUNT_HASH"], order)
