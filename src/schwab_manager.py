@@ -1,5 +1,6 @@
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import datetime
+import logging
 import math
 from schwab.orders.equities import equity_buy_market, equity_sell_short_market, equity_sell_market, equity_buy_to_cover_market, equity_sell_short_limit
 from schwab.orders.options import OptionSymbol
@@ -217,24 +218,24 @@ class SchwabManager:
             None
         """
         if delta_imbalance > 0:
-            print(f"ADJUSTMENT NEEDED: Go short {delta_imbalance} shares.")
+            logging.getLogger().custom(f"ADJUSTMENT NEEDED: Go short {delta_imbalance} shares.")
             if not self.config["DRY_RUN"]:
                 if is_closing_position:
                     order = equity_sell_market(ticker, int(delta_imbalance)).build()
                 else:
                     order = equity_sell_short_market(ticker, int(delta_imbalance)).build()
 
-                print(f"Placing order for -{delta_imbalance} shares...")
+                logging.getLogger().custom(f"Placing order for -{delta_imbalance} shares...")
                 await self.client_manager.place_order(self.config["SCHWAB_ACCOUNT_HASH"], order)
         else:
-            print(f"ADJUSTMENT NEEDED: Go long {-1 * delta_imbalance} shares.")
+            logging.getLogger().custom(f"ADJUSTMENT NEEDED: Go long {-1 * delta_imbalance} shares.")
             if not self.config["DRY_RUN"]:
                 if is_closing_position:
                     order = equity_buy_to_cover_market(ticker, int(-1 * delta_imbalance)).build()
                 else:
                     order = equity_buy_market(ticker, int(-1 * delta_imbalance)).build()
 
-                print(f"Placing order for +{-1 * delta_imbalance} shares...")
+                logging.getLogger().custom(f"Placing order for +{-1 * delta_imbalance} shares...")
                 await self.client_manager.place_order(self.config["SCHWAB_ACCOUNT_HASH"], order)
 
     async def handle_delta_adjustments(self, ticker, streamers_tickers, expiration_time, options, total_shares, r, q):
@@ -330,8 +331,9 @@ class SchwabManager:
         symbol = OptionSymbol(
             ticker, option_date, contract_type, str(strike)).build()
 
+        logging.getLogger().custom(f"Go short {symbol} at LIMIT {mid_price_ceiled}.")
         if not self.config["DRY_RUN"]:
             order = equity_sell_short_limit(symbol, int(1), mid_price_ceiled).build()
 
-            print(f"Placing order to SELL {symbol} at {mid_price_ceiled}...")
+            logging.getLogger().custom(f"Placing order to SELL {symbol} at {mid_price_ceiled}...")
             await self.client_manager.place_order(self.config["SCHWAB_ACCOUNT_HASH"], order)

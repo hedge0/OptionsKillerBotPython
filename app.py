@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import logging
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import asyncio
@@ -17,6 +18,23 @@ from src.models import barone_adesi_whaley_american_option_price, calculate_impl
 from src.interpolations import fit_model, rbf_model, rfv_model
 
 precompile_numba_functions()
+
+CUSTOM_LEVEL_NUM = 15
+logging.addLevelName(CUSTOM_LEVEL_NUM, "CUSTOM")
+
+def custom(self, message, *args, **kwargs):
+    if self.isEnabledFor(CUSTOM_LEVEL_NUM):
+        self._log(CUSTOM_LEVEL_NUM, message, args, **kwargs)
+
+logging.Logger.custom = custom
+
+log_filename = "trade_bot.log"
+logging.basicConfig(
+    filename=log_filename,
+    filemode='w',
+    level=CUSTOM_LEVEL_NUM,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # Constants and Global Variables
 config = load_env_file()
@@ -197,10 +215,10 @@ async def main():
         elif should_wait_for_market_open():
             time_to_wait = calculate_time_to_wait_for_market_open()
 
-            print(f"NYSE is closed. Waiting for {time_to_wait.total_seconds()} seconds until market opens.")
+            logging.getLogger().custom(f"NYSE is closed. Waiting for {time_to_wait.total_seconds()} seconds until market opens.")
             await asyncio.sleep(time_to_wait.total_seconds())
         else:
-            print("NYSE is closed now.")
+            logging.getLogger().custom("NYSE is closed now.")
             break
 
         await asyncio.sleep(config["TIME_TO_REST"])
