@@ -1,3 +1,4 @@
+import logging
 from fredapi import Fred
 
 def fetch_risk_free_rate(fred_api_key):
@@ -16,6 +17,6 @@ def fetch_risk_free_rate(fred_api_key):
         risk_free_rate = (sofr_data.iloc[-1] / 100)
         return risk_free_rate
     except Exception as e:
-        print(f"FRED API Error: Invalid FRED API Key or failed to fetch SOFR data: {str(e)}")
+        logging.error(f"FRED API Error: Invalid FRED API Key or failed to fetch SOFR data: {str(e)}")
         return None
     

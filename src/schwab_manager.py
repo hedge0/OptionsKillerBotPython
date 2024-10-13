@@ -45,7 +45,7 @@ class SchwabManager:
         Authenticate the Schwab client and fetch account numbers.
         """
         await self.client_manager.authenticate_schwab_client()
-        print(await self.client_manager.fetch_account_numbers(), end='\n\n')
+        logging.getLogger().custom(await self.client_manager.fetch_account_numbers())
 
     async def get_option_expiration_date(self, ticker, date_index):
         """
@@ -64,7 +64,7 @@ class SchwabManager:
             expiration_dates_list = [expiration["expirationDate"] for expiration in expirations["expirationList"]]
             return expiration_dates_list[date_index] if date_index < len(expiration_dates_list) else None
         else:
-            print(f"Validation Failed: Invalid ticker symbol: {ticker}. Please use a valid ticker.")
+            logging.error(f"Validation Failed: Invalid ticker symbol: {ticker}. Please use a valid ticker.")
             return None
 
     async def get_dividend_yield(self, ticker):
@@ -83,10 +83,10 @@ class SchwabManager:
             try:
                 return float(div_data[ticker]["fundamental"]["divYield"]) / 100
             except (KeyError, ValueError) as e:
-                print(f"Error parsing dividend yield for {ticker}: {e}")
+                logging.error(f"Error parsing dividend yield for {ticker}: {e}")
                 return None
         else:
-            print(f"Invalid data for {ticker}.")
+            logging.error(f"Invalid data for {ticker}.")
             return None
 
     async def cancel_existing_orders(self, ticker, from_date, to_date):
