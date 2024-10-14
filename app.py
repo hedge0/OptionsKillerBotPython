@@ -7,6 +7,7 @@ import nest_asyncio
 
 nest_asyncio.apply()
 
+from src.custom_logger import init_custom_logger
 from src.trade_state import TradeState 
 from src.load_json import load_json_file
 from src.filters import filter_by_bid_price, filter_by_mid_iv, filter_strikes
@@ -18,23 +19,7 @@ from src.models import barone_adesi_whaley_american_option_price, calculate_impl
 from src.interpolations import fit_model, rbf_model, rfv_model
 
 precompile_numba_functions()
-
-CUSTOM_LEVEL_NUM = 15
-logging.addLevelName(CUSTOM_LEVEL_NUM, "CUSTOM")
-
-def custom(self, message, *args, **kwargs):
-    if self.isEnabledFor(CUSTOM_LEVEL_NUM):
-        self._log(CUSTOM_LEVEL_NUM, message, args, **kwargs)
-
-logging.Logger.custom = custom
-
-log_filename = "trade_bot.log"
-logging.basicConfig(
-    filename=log_filename,
-    filemode='w',
-    level=CUSTOM_LEVEL_NUM,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+init_custom_logger()
 
 # Constants and Global Variables
 config = load_env_file()
@@ -112,7 +97,7 @@ async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_st
         fine_x_normalized = np.linspace(np.min(x_normalized), np.max(x_normalized), 800)
         rbf_interpolated_y = rbf_interpolator(np.log(fine_x_normalized).reshape(-1, 1))
         rfv_interpolated_y = rfv_model(np.log(fine_x_normalized), rfv_params)
-        interpolated_y = 0.75 * rfv_interpolated_y + 0.25 * rbf_interpolated_y
+        interpolated_y = 0.8 * rfv_interpolated_y + 0.2 * rbf_interpolated_y
 
         fine_x = np.linspace(np.min(x), np.max(x), 800)
         mispricings = np.zeros(len(x))
@@ -141,19 +126,19 @@ async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_st
                 mispricings = mispricings[mask]
 
             max_oi_mispricing = float('-inf')
-            best_strike = None
-            best_mid_price = None
+            best_option = (None, None, None)
 
             for i in range(len(x)):
                 if mispricings[i] > min_overpriced:
                     oi_mispricing = open_interest[i] * mispricings[i]
                     if oi_mispricing > max_oi_mispricing:
                         max_oi_mispricing = oi_mispricing
-                        best_strike = x[i]
-                        best_mid_price = y_mid[i]
+                        best_option = (x[i], y_mid[i], mispricings[i])
+
+            best_strike, best_mid_price, best_mispricing = best_option
 
             if best_strike is not None:
-                await manager.sell_option(ticker, option_type, option_date, best_strike, best_mid_price)
+                await manager.sell_option(ticker, option_type, option_date, best_strike, best_mid_price, best_mispricing)
                 trade_state = TradeState.PENDING
         else:
             print()

@@ -1,7 +1,8 @@
 import numpy as np
 from datetime import datetime, time, timedelta
 
-from src.interpolations import rfv_model
+from src.filters import filter_strikes
+from src.interpolations import objective_function, rfv_model
 from src.models import barone_adesi_whaley_american_option_price, calculate_delta, calculate_implied_volatility_baw
 
 def is_nyse_open():
@@ -67,3 +68,10 @@ def precompile_numba_functions():
     calculate_delta(100.0, 100.0, 0.5, 0.01, 0.2, option_type='calls')
     k = np.array([0.1])
     rfv_model(k, [0.1, 0.2, 0.3, 0.4, 0.5])
+    y_mid = np.array([0.15, 0.18, 0.2, 0.22, 0.25])
+    y_bid = np.array([0.14, 0.17, 0.19, 0.21, 0.24])
+    y_ask = np.array([0.16, 0.19, 0.21, 0.23, 0.26])
+    params = [0.1, 0.2, 0.3, 0.4, 0.5]
+    objective_function(params, k, y_mid, y_bid, y_ask, rfv_model)
+    strikes = np.array([90, 95, 100, 105, 110])
+    filter_strikes(strikes, 100.0, num_stdev=1.25)
