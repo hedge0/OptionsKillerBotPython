@@ -1,5 +1,7 @@
 import numpy as np
+from numba import njit
 
+@njit
 def filter_strikes(x, S, num_stdev=1.25, two_sigma_move=False):
     """
     Filter strike prices around the underlying asset's price.

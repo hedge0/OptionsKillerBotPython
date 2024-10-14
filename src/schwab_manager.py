@@ -312,7 +312,7 @@ class SchwabManager:
 
         return quote_data, S
 
-    async def sell_option(self, ticker, option_type, option_date, strike, mid_price):
+    async def sell_option(self, ticker, option_type, option_date, strike, mid_price, best_mispricing):
         """
         Places a limit order to sell an option contract.
 
@@ -322,18 +322,19 @@ class SchwabManager:
             option_date (datetime.date): The expiration date of the option contract.
             strike (float): The strike price of the option contract.
             mid_price (float): The calculated mid-price of the option contract.
+            best_mispricing (float): The best mispricing value used for decision making.
 
         Returns:
             None
         """
-        mid_price_ceiled = math.floor(float(mid_price) * 100) / 100
+        mid_price_floored = math.floor(float(mid_price) * 100) / 100
         contract_type = 'C' if option_type == 'calls' else 'P'
         symbol = OptionSymbol(
             ticker, option_date, contract_type, str(strike)).build()
 
-        logging.getLogger().custom(f"Go short {symbol} at LIMIT {mid_price_ceiled}.")
+        logging.getLogger().custom(f"Go short {symbol} at LIMIT {mid_price_floored} with mispricing: {best_mispricing}.")
         if not self.config["DRY_RUN"]:
-            order = equity_sell_short_limit(symbol, int(1), mid_price_ceiled).build()
+            order = equity_sell_short_limit(symbol, int(1), mid_price_floored).build()
 
-            logging.getLogger().custom(f"Placing order to SELL {symbol} at {mid_price_ceiled}...")
+            logging.getLogger().custom(f"Placing order to SELL {symbol} at {mid_price_floored}...")
             await self.client_manager.place_order(self.config["SCHWAB_ACCOUNT_HASH"], order)

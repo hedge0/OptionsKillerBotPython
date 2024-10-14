@@ -35,6 +35,7 @@ def rbf_model(k, y, epsilon=None):
     rbf = RBFInterpolator(k[:, np.newaxis], y, kernel='multiquadric', epsilon=epsilon, smoothing=0.000000000001)
     return rbf
 
+@njit
 def objective_function(params, k, y_mid, y_bid, y_ask, model):
     """
     Objective function to minimize during model fitting using WLS method.
