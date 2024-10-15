@@ -327,7 +327,7 @@ class SchwabManager:
         Returns:
             None
         """
-        mid_price_floored = (math.floor(float(mid_price) * 100) / 100) - 0.01
+        mid_price_floored = (math.floor((float(mid_price) - 0.01) * 100) / 100)
         contract_type = 'C' if option_type == 'calls' else 'P'
         symbol = OptionSymbol(
             ticker, option_date, contract_type, str(strike)).build()
