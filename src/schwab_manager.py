@@ -2,8 +2,8 @@ from collections import defaultdict
 from datetime import datetime
 import logging
 import math
-from schwab.orders.equities import equity_buy_market, equity_sell_short_market, equity_sell_market, equity_buy_to_cover_market, equity_sell_short_limit
-from schwab.orders.options import OptionSymbol
+from schwab.orders.equities import equity_buy_market, equity_sell_short_market, equity_sell_market, equity_buy_to_cover_market
+from schwab.orders.options import OptionSymbol, option_sell_to_open_limit
 
 from src.models import calculate_delta, calculate_implied_volatility_baw
 from src.client_manager import ClientManager
@@ -334,7 +334,7 @@ class SchwabManager:
 
         logging.getLogger().custom(f"Go short {symbol} at LIMIT {mid_price_floored} with mispricing: {best_mispricing}.")
         if not self.config["DRY_RUN"]:
-            order = equity_sell_short_limit(symbol, int(1), mid_price_floored).build()
+            order = option_sell_to_open_limit(symbol, int(1), mid_price_floored).build()
 
             logging.getLogger().custom(f"Placing order to SELL {symbol} at {mid_price_floored}...")
             await self.client_manager.place_order(self.config["SCHWAB_ACCOUNT_HASH"], order)
