@@ -91,7 +91,7 @@ async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_st
         x_normalized = scaler.fit_transform(x.reshape(-1, 1)).flatten()
         x_normalized = x_normalized + 0.5
 
-        rbf_interpolator = rbf_model(np.log(x_normalized), y_mid_iv, epsilon=0.5)
+        rbf_interpolator = rbf_model(np.log(x_normalized), y_mid_iv, epsilon=0.3)
         rfv_params = fit_model(x_normalized, y_mid_iv, y_bid_iv, y_ask_iv, rfv_model)
 
         fine_x_normalized = np.linspace(np.min(x_normalized), np.max(x_normalized), 800)
