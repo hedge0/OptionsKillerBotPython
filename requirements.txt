@@ -3,6 +3,6 @@ schwab-py
 fredapi
 numba
 httpx
-sklearn
+scikit-learn
 scipy
 nest-asyncio
