@@ -1,12 +1,9 @@
 import numpy as np
-import pytz
 from datetime import datetime, time, timedelta
 
 from src.filters import filter_strikes
 from src.interpolations import objective_function, rfv_model
 from src.models import barone_adesi_whaley_american_option_price, calculate_delta, calculate_implied_volatility_baw
-
-ny_timezone = pytz.timezone("America/New_York")
 
 def is_nyse_open():
     """
@@ -14,52 +11,49 @@ def is_nyse_open():
     
     The NYSE operates Monday through Friday from 9:30 AM to 3:50 PM EST.
     This function checks if the current time falls within the trading hours 
-    in EST and excludes weekends (Saturday and Sunday).
+    and excludes weekends (Saturday and Sunday).
     
     Returns:
         bool: True if NYSE is currently open, False otherwise.
     """
-    now_utc = datetime.now(pytz.utc)
-    now_ny = now_utc.astimezone(ny_timezone)
-    
-    if now_ny.weekday() >= 5:
+    now = datetime.now()
+    if now.weekday() >= 5:
         return False
 
     open_time = time(9, 30)
     close_time = time(15, 50)
 
-    current_time = now_ny.time()
+    current_time = now.time()
 
     return open_time <= current_time < close_time
 
 def should_wait_for_market_open():
     """
-    Check if the current time is before the market opens in EST on a weekday.
+    Check if the current time is before the market opens on a weekday.
+
+    This function determines if the current time is before 9:30 AM on a weekday 
+    (Monday to Friday). If true, it indicates that the code should wait until the market opens.
 
     Returns:
-        bool: True if the current time is before 9:30 AM EST on a weekday, False otherwise.
+        bool: True if the current time is before 9:30 AM on a weekday, False otherwise.
     """
-    now_utc = datetime.now(pytz.utc)
-    now_ny = now_utc.astimezone(ny_timezone)
-
-    if now_ny.weekday() < 5 and now_ny.time() < time(9, 30):
+    now = datetime.now()
+    if now.weekday() < 5 and now.time() < time(9, 30):
         return True
     return False
 
 def calculate_time_to_wait_for_market_open():
     """
-    Calculate the time to wait until the market opens at 9:30 AM EST on the current day.
+    Calculate the time to wait until the market opens at 9:30 AM on the current day.
+
+    This function computes the time difference between the current time and 9:30 AM 
+    on the current day, then adds an additional 15 seconds to the wait time.
 
     Returns:
         timedelta: The time duration to wait until market opens, plus 15 seconds.
     """
-    now_utc = datetime.now(pytz.utc)
-    now_ny = now_utc.astimezone(ny_timezone)
-
-    market_open_time = datetime.combine(now_ny.date(), time(9, 30))
-    market_open_time = ny_timezone.localize(market_open_time)
-
-    time_to_wait = (market_open_time - now_ny) + timedelta(seconds=15)
+    market_open_time = datetime.combine(datetime.now().date(), time(9, 30))
+    time_to_wait = (market_open_time - datetime.now()) + timedelta(seconds=15)
     return time_to_wait
 
 def precompile_numba_functions():
