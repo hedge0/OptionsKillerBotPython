@@ -212,7 +212,7 @@ async def main():
         await asyncio.sleep(config["TIME_TO_REST"])
 
         # ADDED FOR NOW
-        break
+        #break
 
 if __name__ == "__main__":
     asyncio.run(main())
