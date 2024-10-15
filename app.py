@@ -84,6 +84,8 @@ async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_st
     y_ask_iv = np.array([prices['ask_IV'] for prices in sorted_data.values()])
     y_mid_iv = np.array([prices['mid_IV'] for prices in sorted_data.values()])
     open_interest = np.array([prices['open_interest'] for prices in sorted_data.values()])
+    y_bid = np.array([prices['bid'] for prices in sorted_data.values()])
+    y_ask = np.array([prices['ask'] for prices in sorted_data.values()])
     y_mid = np.array([prices['mid'] for prices in sorted_data.values()])
 
     if len(x) >= 20:
@@ -122,23 +124,25 @@ async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_st
                 y_ask_iv = y_ask_iv[mask]
                 y_mid_iv = y_mid_iv[mask]
                 open_interest = open_interest[mask]
+                y_bid = y_bid[mask]
+                y_ask = y_ask[mask]
                 y_mid = y_mid[mask]
                 mispricings = mispricings[mask]
 
             max_oi_mispricing = float('-inf')
-            best_option = (None, None, None)
+            best_option = (None, None, None, None, None)
 
             for i in range(len(x)):
                 if mispricings[i] > min_overpriced:
                     oi_mispricing = open_interest[i] * mispricings[i]
                     if oi_mispricing > max_oi_mispricing:
                         max_oi_mispricing = oi_mispricing
-                        best_option = (x[i], y_mid[i], mispricings[i])
+                        best_option = (x[i], y_mid[i], mispricings[i], y_bid[i], y_ask[i])
 
-            best_strike, best_mid_price, best_mispricing = best_option
+            best_strike, best_mid_price, best_mispricing, best_bid_price, best_ask_price = best_option
 
             if best_strike is not None:
-                await manager.sell_option(ticker, option_type, option_date, best_strike, best_mid_price, best_mispricing)
+                await manager.sell_option(ticker, option_type, option_date, best_strike, best_mid_price, best_mispricing, best_bid_price, best_ask_price)
                 trade_state = TradeState.PENDING
         else:
             print()
