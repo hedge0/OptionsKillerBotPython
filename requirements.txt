@@ -6,4 +6,3 @@ httpx
 scikit-learn
 scipy
 nest-asyncio
-pytz
