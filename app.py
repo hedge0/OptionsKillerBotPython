@@ -130,19 +130,19 @@ async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_st
                 mispricings = mispricings[mask]
 
             max_oi_mispricing = float('-inf')
-            best_option = (None, None, None, None, None)
+            best_option = (None, None, None, None, None, None)
 
             for i in range(len(x)):
                 if mispricings[i] > min_overpriced:
                     oi_mispricing = open_interest[i] * mispricings[i]
                     if oi_mispricing > max_oi_mispricing:
                         max_oi_mispricing = oi_mispricing
-                        best_option = (x[i], y_mid[i], mispricings[i], y_bid[i], y_ask[i])
+                        best_option = (x[i], y_mid[i], mispricings[i], y_bid[i], y_ask[i], open_interest[i])
 
-            best_strike, best_mid_price, best_mispricing, best_bid_price, best_ask_price = best_option
+            best_strike, best_mid_price, best_mispricing, best_bid_price, best_ask_price, best_open_interest = best_option
 
             if best_strike is not None:
-                await manager.sell_option(ticker, option_type, option_date, best_strike, best_mid_price, best_mispricing, best_bid_price, best_ask_price)
+                await manager.sell_option(ticker, option_type, option_date, best_strike, best_mid_price, best_mispricing, best_bid_price, best_ask_price, best_open_interest)
                 trade_state = TradeState.PENDING
         else:
             print()
