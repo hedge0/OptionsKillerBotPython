@@ -3,7 +3,7 @@
         "ticker": "JPM",
         "date_index": 0,
         "option_type": "calls",
-        "min_overpriced": 0.15,
+        "min_overpriced": 0.14,
         "min_oi": 400.0
     }
 ]
