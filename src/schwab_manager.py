@@ -336,7 +336,7 @@ class SchwabManager:
 
         logging.getLogger().custom(f"Go short {symbol} at LIMIT {mid_price_floored} with mispricing: {best_mispricing} strike: {strike} oi: {best_open_interest} bid: {best_bid_price} ask: {best_ask_price}.")
         if not self.config["DRY_RUN"]:
-            order = option_sell_to_open_limit(symbol, int(1), mid_price_floored).build()
+            order = option_sell_to_open_limit(symbol, int(1), str(mid_price_floored)).build()
 
             logging.getLogger().custom(f"Placing order to SELL {symbol} at {mid_price_floored}...")
             await self.client_manager.place_order(self.config["SCHWAB_ACCOUNT_HASH"], order)
