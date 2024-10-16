@@ -6,10 +6,12 @@ class TradeState(Enum):
 
     Attributes:
         NOT_IN_POSITION (str): Indicates that the stock is not currently in a position.
-        PENDING (str): Indicates that the stock trade is pending.
+        PENDING_BUY (str): Indicates that a buy trade is pending.
+        PENDING_SELL (str): Indicates that a sell trade is pending.
         IN_POSITION (str): Indicates that the stock is currently in a position.
     """
     
     NOT_IN_POSITION = "not in position"
-    PENDING = "pending"
+    PENDING_BUY = "pending buy"
+    PENDING_SELL = "pending sell"
     IN_POSITION = "in position"

@@ -49,10 +49,10 @@ async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_st
     if config["DRY_RUN"] != True:
         await manager.cancel_existing_orders(ticker, from_entered_datetime, to_entered_datetime)
 
-    if trade_state in {TradeState.PENDING, TradeState.IN_POSITION}:
+    if trade_state in {TradeState.PENDING_SELL, TradeState.PENDING_BUY, TradeState.IN_POSITION}:
         streamers_tickers, options, total_shares = await manager.get_account_positions(ticker)
 
-        if trade_state == TradeState.PENDING:
+        if trade_state in {TradeState.PENDING_SELL, TradeState.PENDING_BUY}:
             trade_state = TradeState.IN_POSITION if len(streamers_tickers) > 0 else TradeState.NOT_IN_POSITION
  
         await manager.handle_delta_adjustments(ticker, streamers_tickers, expiration_time, options, total_shares, r, q)
@@ -143,7 +143,7 @@ async def handle_trades(ticker, option_type, q, min_overpriced, min_oi, trade_st
 
             if best_strike is not None:
                 await manager.sell_option(ticker, option_type, option_date, best_strike, best_mid_price, best_mispricing, best_bid_price, best_ask_price, best_open_interest)
-                trade_state = TradeState.PENDING
+                trade_state = TradeState.PENDING_SELL
         else:
             print()
             # BOILER PLATE FOR NOW
