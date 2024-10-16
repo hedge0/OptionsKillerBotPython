@@ -4,6 +4,6 @@
         "date_index": 0,
         "option_type": "calls",
         "min_overpriced": 0.08,
-        "min_oi": 200.0
+        "min_oi": 300.0
     }
 ]

@@ -207,7 +207,6 @@ class ClientManager:
             assert resp.status_code == httpx.codes.OK
             return True
         except Exception as e:
-            logging.error(f"Failed to place order: {e}")
             return False
 
     async def cancel_order(self, order_id, account_hash):

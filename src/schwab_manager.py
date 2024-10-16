@@ -312,7 +312,7 @@ class SchwabManager:
 
         return quote_data, S
 
-    async def sell_option(self, ticker, option_type, option_date, strike, mid_price, best_mispricing, best_bid_price, best_ask_price):
+    async def sell_option(self, ticker, option_type, option_date, strike, mid_price, best_mispricing, best_bid_price, best_ask_price, best_open_interest):
         """
         Places a limit order to sell an option contract.
 
@@ -327,12 +327,14 @@ class SchwabManager:
         Returns:
             None
         """
-        mid_price_floored = (math.floor((float(mid_price) - 0.01) * 100) / 100)
+        mid_price_ceiled = math.ceil((float(mid_price)) * 100) / 100 
+        mid_price_floored = math.floor((mid_price_ceiled - 0.02) * 100) / 100
+        
         contract_type = 'C' if option_type == 'calls' else 'P'
         symbol = OptionSymbol(
             ticker, option_date, contract_type, str(strike)).build()
 
-        logging.getLogger().custom(f"Go short {symbol} at LIMIT {mid_price_floored} with mispricing: {best_mispricing} strike: {strike} bid: {best_bid_price} ask: {best_ask_price}.")
+        logging.getLogger().custom(f"Go short {symbol} at LIMIT {mid_price_floored} with mispricing: {best_mispricing} strike: {strike} oi: {best_open_interest} bid: {best_bid_price} ask: {best_ask_price}.")
         if not self.config["DRY_RUN"]:
             order = option_sell_to_open_limit(symbol, int(1), mid_price_floored).build()
 
