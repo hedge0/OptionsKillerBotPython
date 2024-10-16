@@ -328,7 +328,7 @@ class SchwabManager:
             None
         """
         mid_price_ceiled = math.ceil((float(mid_price)) * 100) / 100 
-        mid_price_floored = math.floor((mid_price_ceiled - 0.02) * 100) / 100
+        mid_price_floored = math.floor((mid_price_ceiled - 0.05) * 100) / 100
         
         contract_type = 'C' if option_type == 'calls' else 'P'
         symbol = OptionSymbol(
