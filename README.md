@@ -34,7 +34,15 @@ You can install these libraries by running the following command:
 
 2. Create a `stocks.json` file in the root directory with the following structure:
  ```json
-[   { "ticker": "JPM", "date_index": 0, "option_type": "calls", "min_overpriced": 0.14, "min_oi": 400.0 } ]
+[   
+    { 
+        "ticker": "JPM", 
+        "date_index": 0, 
+        "option_type": "calls", 
+        "min_overpriced": 0.14, 
+        "min_oi": 400.0 
+    } 
+]
 ```
 
 ## Usage
